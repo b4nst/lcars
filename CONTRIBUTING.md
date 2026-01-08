@@ -29,8 +29,6 @@ Thank you for your interest in contributing to LCARS!
 
 3. Install frontend dependencies:
    ```bash
-   make install
-   # or
    cd apps/frontend && bun install
    ```
 
@@ -48,13 +46,9 @@ This project uses [Moon](https://moonrepo.dev/) for monorepo management. Project
 
 ```bash
 # Backend
-make dev-backend
-# or
 moon run backend:dev
 
 # Frontend
-make dev-frontend
-# or
 moon run frontend:dev
 ```
 
@@ -62,18 +56,18 @@ moon run frontend:dev
 
 ```bash
 # Build everything
-make build
+moon run :build
 
 # Build specific project
-make build-backend
-make build-frontend
+moon run backend:build
+moon run frontend:build
 ```
 
 ### Testing
 
 ```bash
 # Run all tests
-make test
+moon run :test
 
 # Backend tests
 moon run backend:test
@@ -83,13 +77,13 @@ moon run backend:test
 
 ```bash
 # Format backend code
-make fmt-backend
+moon run backend:fmt
 
 # Run clippy on backend
-make clippy
+moon run backend:clippy
 
 # Lint frontend
-make lint-frontend
+moon run frontend:lint
 
 # Type check frontend
 moon run frontend:typecheck
