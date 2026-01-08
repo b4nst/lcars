@@ -1,0 +1,19 @@
+{
+  "name": "lcars",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "moon run backend:dev",
+    "dev:frontend": "moon run frontend:dev",
+    "build:backend": "moon run backend:build",
+    "build:frontend": "moon run frontend:build",
+    "build": "moon run :build",
+    "check": "moon check --all",
+    "test": "moon run :test"
+  },
+  "packageManager": "bun@1.0.0"
+}
