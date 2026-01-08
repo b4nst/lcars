@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend:
+    name: Backend (Rust)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/backend/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Check formatting
+        run: cd apps/backend && cargo fmt -- --check
+      
+      - name: Run clippy
+        run: cd apps/backend && cargo clippy -- -D warnings
+      
+      - name: Run tests
+        run: cd apps/backend && cargo test
+      
+      - name: Build
+        run: cd apps/backend && cargo build --release
+
+  frontend:
+    name: Frontend (Next.js)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      
+      - name: Install dependencies
+        run: cd apps/frontend && bun install
+      
+      - name: Lint
+        run: cd apps/frontend && bun run lint
+      
+      - name: Type check
+        run: cd apps/frontend && bunx tsc --noEmit
+      
+      - name: Build
+        run: cd apps/frontend && bun run build
