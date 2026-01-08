@@ -6,7 +6,7 @@ This document describes the monorepo setup created for the LCARS project.
 
 The LCARS project is set up as a monorepo using [Moon](https://moonrepo.dev/) for build orchestration, with:
 - **Backend**: Rust service using the Axum framework
-- **Frontend**: Next.js 14 SPA with static export capabilities
+- **Frontend**: Next.js 14 SPA with static export capabilities (using Bun)
 - **Package Manager**: Bun for the frontend
 - **Development Environment**: Nix flake with devshell using t3rapkgs
 
