@@ -1,0 +1,12 @@
+# https://moonrepo.dev/docs/config/toolchain
+$schema: 'https://moonrepo.dev/schemas/toolchain.json'
+
+# Configure Bun for frontend development
+bun:
+  version: '1.0.0'
+  plugin: 'https://raw.githubusercontent.com/moonrepo/bun-plugin/master/bun_plugin.wasm'
+
+# Configure Rust for backend development
+rust:
+  version: '1.75.0'
+  plugin: 'https://raw.githubusercontent.com/moonrepo/rust-plugin/master/rust_plugin.wasm'

@@ -1,0 +1,18 @@
+# https://moonrepo.dev/docs/config/workspace
+$schema: 'https://moonrepo.dev/schemas/workspace.json'
+
+# Extend and inherit configuration from a shared repository.
+# extends: 'https://raw.githubusercontent.com/moonrepo/moon-configs/master/javascript/library.yml'
+
+# REQUIRED: A map of all projects found in the workspace, or a list or file system
+# globs in which to automatically find projects. When using a map, each entry requires
+# a unique project ID as the map key, and a relative file system path to the
+# project folder as the map value.
+projects:
+  - 'apps/*'
+  - 'packages/*'
+
+# Configures the version control system to utilize within the workspace.
+vcs:
+  manager: 'git'
+  defaultBranch: 'main'
