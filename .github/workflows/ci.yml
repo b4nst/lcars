@@ -10,61 +10,17 @@ permissions:
   contents: read
 
 jobs:
-  backend:
-    name: Backend (Rust)
+  ci:
+    name: CI
     runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Nix
+        uses: cachix/install-nix-action@v24
         with:
-          components: rustfmt, clippy
+          nix_path: nixpkgs=channel:nixos-unstable
       
-      - name: Cache Cargo
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            apps/backend/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Check formatting
-        run: cd apps/backend && cargo fmt -- --check
-      
-      - name: Run clippy
-        run: cd apps/backend && cargo clippy -- -D warnings
-      
-      - name: Run tests
-        run: cd apps/backend && cargo test
-      
-      - name: Build
-        run: cd apps/backend && cargo build --release
-
-  frontend:
-    name: Frontend (Next.js)
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: '1.0.0'
-      
-      - name: Install dependencies
-        run: cd apps/frontend && bun install
-      
-      - name: Lint
-        run: cd apps/frontend && bun run lint
-      
-      - name: Type check
-        run: cd apps/frontend && bunx tsc --noEmit
-      
-      - name: Build
-        run: cd apps/frontend && bun run build
+      - name: Run moon ci
+        run: nix develop --command moon ci
