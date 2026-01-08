@@ -48,8 +48,6 @@ lcars/
 ├── CONTRIBUTING.md             # Contribution guidelines
 ├── flake.nix                   # Nix flake for dev environment
 ├── LICENSE                     # MIT License
-├── Makefile                    # Convenience commands
-├── package.json                # Workspace package.json
 └── README.md                   # Project README
 ```
 
@@ -126,41 +124,16 @@ lcars/
 - Works with direnv via `.envrc`
 - Displays version info on shell entry
 
-### 5. Build Automation
-
-**Makefile**: Common commands for development
-- `make install`: Install dependencies
-- `make dev-backend`: Run backend
-- `make dev-frontend`: Run frontend
-- `make build`: Build all projects
-- `make test`: Run all tests
-- `make clean`: Clean build artifacts
-
-**Root package.json**: Workspace scripts
-- `bun run dev:backend`
-- `bun run dev:frontend`
-- `bun run build`
-- `bun run check`
-- `bun run test`
-
-### 6. CI/CD
+### 5. CI/CD
 
 **GitHub Actions** (`.github/workflows/ci.yml`):
 
-**Backend Job**:
-1. Install Rust with rustfmt and clippy
-2. Cache Cargo dependencies
-3. Check formatting
-4. Run clippy with warnings as errors
-5. Run tests
-6. Build release binary
-
-**Frontend Job**:
-1. Setup Bun
-2. Install dependencies
-3. Lint with ESLint
-4. Type check with TypeScript
-5. Build static export
+Single CI job using Nix and Moon:
+1. Checkout code
+2. Install Nix
+3. Run `moon ci` within Nix development shell
+   - Executes all configured tasks (build, test, lint, etc.)
+   - Unified workflow managed by Moon
 
 ## Usage
 
