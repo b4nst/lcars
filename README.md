@@ -113,4 +113,4 @@ The Nix devshell provides:
 
 ## License
 
-TBD
+MIT License - see [LICENSE](LICENSE) for details
