@@ -1,0 +1,35 @@
+# https://moonrepo.dev/docs/config/project
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+type: 'application'
+language: 'typescript'
+
+tasks:
+  dev:
+    command: 'bun run dev'
+    local: true
+
+  build:
+    command: 'bun run build'
+    inputs:
+      - 'src/**/*'
+      - 'public/**/*'
+      - 'package.json'
+      - 'next.config.js'
+      - 'tsconfig.json'
+      - 'tailwind.config.js'
+      - 'postcss.config.js'
+    outputs:
+      - 'out/**/*'
+
+  lint:
+    command: 'bun run lint'
+    inputs:
+      - 'src/**/*'
+      - 'package.json'
+
+  typecheck:
+    command: 'bunx tsc --noEmit'
+    inputs:
+      - 'src/**/*'
+      - 'tsconfig.json'
