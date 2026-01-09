@@ -44,6 +44,24 @@
             echo "  - Moon: $(moon --version)"
           '';
         };
+
+        apps.default = {
+          type = "app";
+          program = "${pkgs.writeShellScript "moon-ci" ''
+            export PATH="${pkgs.lib.makeBinPath (with pkgs; [
+              rustc
+              cargo
+              rustfmt
+              clippy
+              bun
+              moonrepo
+              git
+              pkg-config
+              openssl
+            ])}"
+            exec ${pkgs.moonrepo}/bin/moon ci
+          ''}";
+        };
       }
     );
 }
