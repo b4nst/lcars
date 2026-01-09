@@ -47,19 +47,20 @@
 
         apps.default = {
           type = "app";
-          program = "${pkgs.writeShellScript "moon-ci" ''
+          program = "${pkgs.writeShellScript "devshell" ''
             export PATH="${pkgs.lib.makeBinPath (with pkgs; [
               rustc
               cargo
               rustfmt
               clippy
+              rust-analyzer
               bun
               moonrepo
               git
               pkg-config
               openssl
             ])}"
-            exec ${pkgs.moonrepo}/bin/moon ci
+            exec "$@"
           ''}";
         };
       }
