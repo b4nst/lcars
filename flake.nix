@@ -1,23 +1,45 @@
 {
   description = "LCARS - Media Management Monorepo";
-
+  
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    t3rapkgs.url = "github:t3ra-oss/t3rapkgs";
+    devshell.url = "github:numtide/devshell";
+    t3rapkgs = {
+      url = "github:t3ra-oss/t3rapkgs";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+    };
+    flake-compat = {
+      url = "github:edolstra/flake-compat";
+      flake = false;
+    };
   };
-
-  outputs = { self, nixpkgs, flake-utils, t3rapkgs }:
+  
+  outputs =
+    {
+      self,
+      flake-utils,
+      devshell,
+      nixpkgs,
+      t3rapkgs,
+      ...
+    }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ t3rapkgs.overlays.default ];
+          overlays = [
+            devshell.overlays.default
+            t3rapkgs.overlays.default
+          ];
         };
-      in
-      {
-        devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [
+        # Create dev shells using t3ra pkgs
+        shells = t3rapkgs.lib.devshell.mkDevShells {
+          inherit pkgs system;
+          name = "lcars";
+          defaultShell = "nu";
+          packages = with pkgs; [
             # Rust toolchain
             rustc
             cargo
@@ -36,33 +58,13 @@
             pkg-config
             openssl
           ];
-
-          shellHook = ''
-            echo "🚀 LCARS Development Environment"
-            echo "  - Rust: $(rustc --version)"
-            echo "  - Bun: $(bun --version)"
-            echo "  - Moon: $(moon --version)"
-          '';
+          monorepo = true;
         };
-
-        apps.default = {
-          type = "app";
-          program = "${pkgs.writeShellScript "devshell" ''
-            export PATH="${pkgs.lib.makeBinPath (with pkgs; [
-              rustc
-              cargo
-              rustfmt
-              clippy
-              rust-analyzer
-              bun
-              moonrepo
-              git
-              pkg-config
-              openssl
-            ])}"
-            exec "$@"
-          ''}";
-        };
-      }
-    );
+      in
+      {
+        # Dev shells
+        devShells = shells.devShells;
+        # Apps
+        apps = shells.apps;
+      });
 }
