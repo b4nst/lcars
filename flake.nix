@@ -38,7 +38,6 @@
         shells = t3rapkgs.lib.devshell.mkDevShells {
           inherit pkgs system;
           name = "lcars";
-          defaultShell = "nu";
           packages = with pkgs; [
             # Rust toolchain
             rustc
