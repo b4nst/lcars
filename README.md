@@ -69,7 +69,7 @@ moon run frontend:build
 
 ```bash
 # Run all CI tasks (same as GitHub Actions)
-nix run
+nix run .#default -- moon ci
 
 # Backend tests
 moon run backend:test

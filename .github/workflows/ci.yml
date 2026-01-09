@@ -23,4 +23,4 @@ jobs:
           nix_path: nixpkgs=channel:nixos-unstable
       
       - name: Run moon ci
-        run: nix run
+        run: nix run .#default -- moon ci
