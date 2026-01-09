@@ -49,9 +49,6 @@
             # Bun for frontend
             bun
 
-            # Moon for monorepo management
-            moonrepo
-
             # Other development tools
             git
             pkg-config
