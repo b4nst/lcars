@@ -123,6 +123,7 @@ lcars/
 - Uses t3rapkgs overlay
 - Works with direnv via `.envrc`
 - Displays version info on shell entry
+- Provides `apps.default` for running CI tasks with `nix run`
 
 ### 5. CI/CD
 
@@ -131,7 +132,8 @@ lcars/
 Single CI job using Nix and Moon:
 1. Checkout code
 2. Install Nix
-3. Run `moon ci` within Nix development shell
+3. Run `nix run` to execute the flake's default app
+   - Runs `moon ci` with all required dependencies
    - Executes all configured tasks (build, test, lint, etc.)
    - Unified workflow managed by Moon
 
