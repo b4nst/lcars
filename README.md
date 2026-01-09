@@ -68,6 +68,9 @@ moon run frontend:build
 #### Run Tests and Checks
 
 ```bash
+# Run all CI tasks (same as GitHub Actions)
+nix run
+
 # Backend tests
 moon run backend:test
 
