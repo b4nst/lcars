@@ -2,6 +2,8 @@ use axum::{response::Json, routing::get, Router};
 use serde::Serialize;
 use std::net::SocketAddr;
 
+mod db;
+
 #[derive(Serialize)]
 struct ApiResponse {
     message: String,
