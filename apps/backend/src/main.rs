@@ -19,7 +19,7 @@ mod middleware;
 mod services;
 
 use config::Config;
-use services::{AuthService, TmdbClient};
+use services::{AuthService, MusicBrainzClient, TmdbClient};
 
 /// Application state shared across handlers
 #[derive(Clone)]
@@ -28,6 +28,7 @@ pub struct AppState {
     pub db: Arc<Mutex<Connection>>,
     auth_service: Arc<AuthService>,
     tmdb_client: Option<Arc<TmdbClient>>,
+    musicbrainz_client: Option<Arc<MusicBrainzClient>>,
 }
 
 impl AppState {
@@ -39,6 +40,11 @@ impl AppState {
     /// Get a reference to the TMDB client, if configured.
     pub fn tmdb_client(&self) -> Option<&TmdbClient> {
         self.tmdb_client.as_deref()
+    }
+
+    /// Get a reference to the MusicBrainz client, if configured.
+    pub fn musicbrainz_client(&self) -> Option<&MusicBrainzClient> {
+        self.musicbrainz_client.as_deref()
     }
 }
 
@@ -209,12 +215,30 @@ async fn main() {
         }
     };
 
+    // Create MusicBrainz client (no API key required, just rate limiting)
+    let musicbrainz_client = match MusicBrainzClient::new_shared(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        "https://github.com/b4nst/lcars",
+        config.musicbrainz.rate_limit_ms,
+    ) {
+        Ok(client) => {
+            tracing::info!("MusicBrainz client initialized");
+            Some(client)
+        }
+        Err(e) => {
+            tracing::error!("Failed to create MusicBrainz client: {}", e);
+            None
+        }
+    };
+
     // Create application state
     let state = AppState {
         config: Arc::new(config.clone()),
         db: Arc::new(Mutex::new(conn)),
         auth_service: Arc::new(auth_service),
         tmdb_client,
+        musicbrainz_client,
     };
 
     // Build auth routes (public)
