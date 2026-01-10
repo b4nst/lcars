@@ -19,7 +19,7 @@ mod middleware;
 mod services;
 
 use config::Config;
-use services::AuthService;
+use services::{AuthService, TmdbClient};
 
 /// Application state shared across handlers
 #[derive(Clone)]
@@ -27,12 +27,18 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub db: Arc<Mutex<Connection>>,
     auth_service: Arc<AuthService>,
+    tmdb_client: Option<Arc<TmdbClient>>,
 }
 
 impl AppState {
     /// Get a reference to the auth service.
     pub fn auth_service(&self) -> &AuthService {
         &self.auth_service
+    }
+
+    /// Get a reference to the TMDB client, if configured.
+    pub fn tmdb_client(&self) -> Option<&TmdbClient> {
+        self.tmdb_client.as_deref()
     }
 }
 
@@ -185,11 +191,30 @@ async fn main() {
     // Clean up expired sessions on startup
     cleanup_expired_sessions(&conn);
 
+    // Create TMDB client if API key is configured
+    let tmdb_client = match &config.tmdb.api_key {
+        Some(api_key) if !api_key.is_empty() => match TmdbClient::new_shared(api_key.clone()) {
+            Ok(client) => {
+                tracing::info!("TMDB client initialized");
+                Some(client)
+            }
+            Err(e) => {
+                tracing::error!("Failed to create TMDB client: {}", e);
+                None
+            }
+        },
+        _ => {
+            tracing::warn!("TMDB API key not configured - metadata lookups will be unavailable");
+            None
+        }
+    };
+
     // Create application state
     let state = AppState {
         config: Arc::new(config.clone()),
         db: Arc::new(Mutex::new(conn)),
         auth_service: Arc::new(auth_service),
+        tmdb_client,
     };
 
     // Build auth routes (public)
