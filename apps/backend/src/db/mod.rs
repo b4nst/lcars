@@ -6,6 +6,7 @@
 
 use rusqlite::Connection;
 use std::path::Path;
+use thiserror::Error;
 
 pub mod models;
 pub mod queries;
@@ -15,33 +16,13 @@ mod embedded {
     embed_migrations!("src/db/migrations");
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum DbError {
-    Connection(rusqlite::Error),
-    Migration(refinery::Error),
-}
+    #[error("Database connection error: {0}")]
+    Connection(#[from] rusqlite::Error),
 
-impl std::fmt::Display for DbError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DbError::Connection(e) => write!(f, "Database connection error: {}", e),
-            DbError::Migration(e) => write!(f, "Migration error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for DbError {}
-
-impl From<rusqlite::Error> for DbError {
-    fn from(err: rusqlite::Error) -> Self {
-        DbError::Connection(err)
-    }
-}
-
-impl From<refinery::Error> for DbError {
-    fn from(err: refinery::Error) -> Self {
-        DbError::Migration(err)
-    }
+    #[error("Migration error: {0}")]
+    Migration(#[from] refinery::Error),
 }
 
 /// Configure connection with recommended pragmas
