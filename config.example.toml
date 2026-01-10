@@ -1,0 +1,102 @@
+# LCARS Configuration Example
+# Copy this file to config.toml and customize for your environment.
+# All values shown are defaults unless marked as required.
+
+[server]
+# Host address to bind to (default: "0.0.0.0")
+host = "0.0.0.0"
+# Port to listen on (default: 8080)
+port = 8080
+# JWT secret for authentication (REQUIRED for auth to work)
+# Generate with: openssl rand -base64 32
+jwt_secret = "change-me-generate-a-secure-random-string"
+
+[database]
+# Path to SQLite database file (default: "./data/lcars.db")
+path = "./data/lcars.db"
+
+[tmdb]
+# TMDB API key for movie/TV metadata (REQUIRED for media lookups)
+# Get one at: https://www.themoviedb.org/settings/api
+api_key = "your-tmdb-api-key"
+
+[musicbrainz]
+# Rate limit in milliseconds (default: 1000)
+# MusicBrainz API requires max 1 request per second
+rate_limit_ms = 1000
+
+[torrent]
+# Directory for active downloads (default: "./downloads")
+download_dir = "./downloads"
+# VPN interface to bind torrent traffic to (empty for default interface)
+bind_interface = ""
+# Maximum concurrent connections (default: 100)
+max_connections = 100
+# Port range for incoming connections (default: [6881, 6889])
+port_range = [6881, 6889]
+
+[torrent.seeding]
+# Enable seeding after download (default: true)
+enabled = true
+# Stop seeding after reaching this ratio (default: 1.0)
+ratio_limit = 1.0
+# Stop seeding after this many hours (default: 48)
+time_limit_hours = 48
+
+# Storage mount points
+# Multiple mounts can be configured for different destinations
+
+[[storage.mounts]]
+name = "local"
+type = "local"
+path = "/media/library"
+enabled = true
+
+# Example SMB mount (disabled by default)
+# [[storage.mounts]]
+# name = "nas"
+# type = "smb"
+# host = "192.168.1.100"
+# share = "media"
+# username = "user"
+# password = "pass"
+# mount_point = "/mnt/nas"
+# enabled = false
+
+[storage.naming]
+# File naming patterns with placeholders
+# Movie: {title}, {year}, {quality}, {source}, {codec}, {group}, {ext}
+movie_pattern = "movie/{title} ({year})/{title} ({year}) - {quality}.{ext}"
+# TV: {title}, {season:02}, {episode:02}, {episode_title}, {quality}, {ext}
+tv_pattern = "tv/{title}/S{season:02}/{title} - S{season:02}E{episode:02} - {episode_title}.{ext}"
+# Music: {artist}, {album}, {title}, {track:02}, {disc:02}, {format}, {ext}
+music_pattern = "music/{artist}/{album}/{title}.{ext}"
+
+# Storage rules for post-download processing
+# Rules are processed in order
+
+[[storage.rules]]
+action = "move"
+destination = "local"
+media_types = ["movie", "episode", "album"]
+
+# Example: Copy movies to NAS as backup
+# [[storage.rules]]
+# action = "copy"
+# destination = "nas"
+# media_types = ["movie"]
+
+[scheduler]
+# Cron expressions for scheduled tasks
+# Format: second minute hour day_of_month month day_of_week
+
+# Search for missing monitored media (default: every 6 hours)
+search_missing = "0 0 */6 * * *"
+# Refresh metadata from TMDB/MusicBrainz (default: 2 AM daily)
+refresh_metadata = "0 0 2 * * *"
+# Check for new episodes (default: every 12 hours)
+check_new_episodes = "0 0 */12 * * *"
+# Check for new album releases (default: 3 AM daily)
+check_new_releases = "0 0 3 * * *"
+# Clean up completed downloads (default: hourly)
+cleanup_completed = "0 0 * * * *"
