@@ -19,7 +19,7 @@ mod middleware;
 mod services;
 
 use config::Config;
-use services::{AuthService, MusicBrainzClient, TmdbClient};
+use services::{AuthService, IndexerManager, MusicBrainzClient, TmdbClient};
 
 /// Application state shared across handlers
 #[derive(Clone)]
@@ -29,6 +29,7 @@ pub struct AppState {
     auth_service: Arc<AuthService>,
     tmdb_client: Option<Arc<TmdbClient>>,
     musicbrainz_client: Option<Arc<MusicBrainzClient>>,
+    indexer_manager: Arc<IndexerManager>,
 }
 
 impl AppState {
@@ -45,6 +46,11 @@ impl AppState {
     /// Get a reference to the MusicBrainz client, if configured.
     pub fn musicbrainz_client(&self) -> Option<&MusicBrainzClient> {
         self.musicbrainz_client.as_deref()
+    }
+
+    /// Get a reference to the indexer manager.
+    pub fn indexer_manager(&self) -> &IndexerManager {
+        &self.indexer_manager
     }
 }
 
@@ -232,6 +238,13 @@ async fn main() {
         }
     };
 
+    // Create indexer manager
+    let indexer_manager = IndexerManager::new_shared();
+    tracing::info!(
+        "Indexer manager initialized with {} providers",
+        indexer_manager.providers().len()
+    );
+
     // Create application state
     let state = AppState {
         config: Arc::new(config.clone()),
@@ -239,6 +252,7 @@ async fn main() {
         auth_service: Arc::new(auth_service),
         tmdb_client,
         musicbrainz_client,
+        indexer_manager,
     };
 
     // Build auth routes (public)
