@@ -14,8 +14,13 @@ use crate::services::indexer::{
 
 const LEETX_BASE_URL: &str = "https://1337x.to";
 const REQUEST_TIMEOUT_SECS: u64 = 30;
+const USER_AGENT: &str = concat!("LCARS/", env!("CARGO_PKG_VERSION"));
 
 /// 1337x torrent indexer provider.
+///
+/// Scrapes the 1337x.to website for torrent releases. Supports movies, TV shows, and music.
+/// Note: This provider makes multiple HTTP requests per search (one for the search page,
+/// then one per result to fetch magnet links).
 pub struct LeetxProvider {
     client: Client,
     base_url: String,
@@ -29,11 +34,12 @@ impl LeetxProvider {
 
     /// Create a new 1337x provider with a custom base URL.
     pub fn with_base_url(base_url: String) -> Self {
+        // Client builder should not fail with these standard options
         let client = Client::builder()
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .user_agent(USER_AGENT)
             .build()
-            .expect("Failed to create HTTP client");
+            .unwrap_or_else(|_| Client::new());
 
         Self { client, base_url }
     }
