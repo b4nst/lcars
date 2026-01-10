@@ -67,6 +67,10 @@ impl MusicBrainzClient {
     /// * `app_version` - Application version (e.g., "0.1.0")
     /// * `contact` - Contact email or URL
     /// * `rate_limit_ms` - Minimum interval between requests in milliseconds
+    ///
+    /// # Errors
+    /// Returns an error if any of the required parameters are empty or if the
+    /// rate limit is too high (max 60000ms).
     pub fn new(
         app_name: &str,
         app_version: &str,
@@ -77,6 +81,34 @@ impl MusicBrainzClient {
             return Err(AppError::Internal(
                 "MusicBrainz app name cannot be empty".to_string(),
             ));
+        }
+
+        if app_version.trim().is_empty() {
+            return Err(AppError::Internal(
+                "MusicBrainz app version cannot be empty".to_string(),
+            ));
+        }
+
+        if contact.trim().is_empty() {
+            return Err(AppError::Internal(
+                "MusicBrainz contact information cannot be empty".to_string(),
+            ));
+        }
+
+        // MusicBrainz requires at least 1 second between requests
+        if rate_limit_ms < 1000 {
+            tracing::warn!(
+                "Rate limit {}ms is below MusicBrainz minimum of 1000ms, this may result in rate limiting",
+                rate_limit_ms
+            );
+        }
+
+        // Reasonable upper bound to catch configuration errors
+        if rate_limit_ms > 60_000 {
+            return Err(AppError::Internal(format!(
+                "Rate limit {}ms is unreasonably high (max 60000ms)",
+                rate_limit_ms
+            )));
         }
 
         let user_agent = format!("{}/{} ({})", app_name, app_version, contact);
@@ -355,13 +387,13 @@ pub struct MbSearchResponse<T> {
 
 /// Artist search result from MusicBrainz.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct MbArtist {
     /// MusicBrainz ID (UUID)
     pub id: String,
     /// Artist name
     pub name: String,
     /// Sort name (e.g., "Beatles, The")
-    #[serde(rename = "sort-name")]
     pub sort_name: String,
     /// Disambiguation comment (e.g., "UK rock band")
     pub disambiguation: Option<String>,
@@ -371,7 +403,6 @@ pub struct MbArtist {
     /// Country code (ISO 3166-1 alpha-2)
     pub country: Option<String>,
     /// Life span information
-    #[serde(rename = "life-span")]
     pub life_span: Option<LifeSpan>,
     /// Search relevance score (0-100)
     pub score: Option<u8>,
@@ -379,13 +410,13 @@ pub struct MbArtist {
 
 /// Artist details with release groups.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct MbArtistDetails {
     /// MusicBrainz ID (UUID)
     pub id: String,
     /// Artist name
     pub name: String,
     /// Sort name (e.g., "Beatles, The")
-    #[serde(rename = "sort-name")]
     pub sort_name: String,
     /// Disambiguation comment
     pub disambiguation: Option<String>,
@@ -395,10 +426,9 @@ pub struct MbArtistDetails {
     /// Country code (ISO 3166-1 alpha-2)
     pub country: Option<String>,
     /// Life span information
-    #[serde(rename = "life-span")]
     pub life_span: Option<LifeSpan>,
     /// Release groups by this artist
-    #[serde(default, rename = "release-groups")]
+    #[serde(default)]
     pub release_groups: Vec<MbReleaseGroup>,
 }
 
@@ -419,22 +449,21 @@ pub struct LifeSpan {
 
 /// Release group (album) from MusicBrainz.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct MbReleaseGroup {
     /// MusicBrainz ID (UUID)
     pub id: String,
     /// Title of the release group
     pub title: String,
     /// Primary type: Album, Single, EP, Broadcast, Other
-    #[serde(rename = "primary-type")]
     pub primary_type: Option<String>,
     /// Secondary types: Compilation, Soundtrack, Spokenword, Interview, etc.
-    #[serde(default, rename = "secondary-types")]
+    #[serde(default)]
     pub secondary_types: Vec<String>,
     /// First release date (YYYY, YYYY-MM, or YYYY-MM-DD)
-    #[serde(rename = "first-release-date")]
     pub first_release_date: Option<String>,
     /// Artist credits
-    #[serde(default, rename = "artist-credit")]
+    #[serde(default)]
     pub artist_credit: Vec<ArtistCredit>,
     /// Search relevance score (0-100)
     pub score: Option<u8>,
@@ -442,22 +471,21 @@ pub struct MbReleaseGroup {
 
 /// Release group details with releases.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct MbReleaseGroupDetails {
     /// MusicBrainz ID (UUID)
     pub id: String,
     /// Title of the release group
     pub title: String,
     /// Primary type: Album, Single, EP, Broadcast, Other
-    #[serde(rename = "primary-type")]
     pub primary_type: Option<String>,
     /// Secondary types
-    #[serde(default, rename = "secondary-types")]
+    #[serde(default)]
     pub secondary_types: Vec<String>,
     /// First release date
-    #[serde(rename = "first-release-date")]
     pub first_release_date: Option<String>,
     /// Artist credits
-    #[serde(default, rename = "artist-credit")]
+    #[serde(default)]
     pub artist_credit: Vec<ArtistCredit>,
     /// Releases in this release group
     #[serde(default)]
@@ -487,6 +515,7 @@ pub struct MbRelease {
 
 /// Release details with track listing.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct MbReleaseDetails {
     /// MusicBrainz ID (UUID)
     pub id: String,
@@ -501,7 +530,7 @@ pub struct MbReleaseDetails {
     /// Barcode
     pub barcode: Option<String>,
     /// Artist credits
-    #[serde(default, rename = "artist-credit")]
+    #[serde(default)]
     pub artist_credit: Vec<ArtistCredit>,
     /// Media (discs/sides)
     #[serde(default)]
@@ -510,13 +539,13 @@ pub struct MbReleaseDetails {
 
 /// Medium (disc/side) in a release.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct MbMedium {
     /// Position in release (1, 2, ...)
     pub position: u32,
     /// Format: CD, Vinyl, Digital Media, etc.
     pub format: Option<String>,
     /// Number of tracks
-    #[serde(rename = "track-count")]
     pub track_count: u32,
     /// Tracks on this medium
     #[serde(default)]
@@ -540,6 +569,7 @@ pub struct MbTrack {
 
 /// Recording (unique performance).
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct MbRecording {
     /// MusicBrainz ID (UUID)
     pub id: String,
@@ -548,7 +578,7 @@ pub struct MbRecording {
     /// Recording length in milliseconds
     pub length: Option<u32>,
     /// Artist credits for this recording
-    #[serde(default, rename = "artist-credit")]
+    #[serde(default)]
     pub artist_credit: Vec<ArtistCredit>,
 }
 
@@ -563,13 +593,13 @@ pub struct ArtistCredit {
 
 /// Minimal artist reference.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct MbArtistRef {
     /// MusicBrainz ID (UUID)
     pub id: String,
     /// Artist name
     pub name: String,
     /// Sort name
-    #[serde(rename = "sort-name")]
     pub sort_name: Option<String>,
 }
 
@@ -660,5 +690,94 @@ mod tests {
         limiter.wait().await;
         let second_elapsed = start.elapsed();
         assert!(second_elapsed >= Duration::from_millis(100));
+    }
+
+    #[test]
+    fn test_empty_app_version_rejected() {
+        let result = MusicBrainzClient::new("test-app", "", "test@example.com", 1000);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_whitespace_app_version_rejected() {
+        let result = MusicBrainzClient::new("test-app", "   ", "test@example.com", 1000);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_contact_rejected() {
+        let result = MusicBrainzClient::new("test-app", "0.1.0", "", 1000);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_whitespace_contact_rejected() {
+        let result = MusicBrainzClient::new("test-app", "0.1.0", "   ", 1000);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_excessive_rate_limit_rejected() {
+        let result = MusicBrainzClient::new("test-app", "0.1.0", "test@example.com", 100_000);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_artist_search_response() {
+        let json = r#"{
+            "artists": [
+                {
+                    "id": "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d",
+                    "name": "The Beatles",
+                    "sort-name": "Beatles, The",
+                    "type": "Group",
+                    "score": 100
+                }
+            ],
+            "count": 1,
+            "offset": 0
+        }"#;
+
+        let response: MbSearchResponse<MbArtist> =
+            serde_json::from_str(json).expect("Should deserialize");
+        let artists = response.artists.unwrap();
+        assert_eq!(artists.len(), 1);
+        assert_eq!(artists[0].name, "The Beatles");
+        assert_eq!(artists[0].sort_name, "Beatles, The");
+        assert_eq!(artists[0].artist_type, Some("Group".to_string()));
+    }
+
+    #[test]
+    fn test_deserialize_artist_with_missing_optional_fields() {
+        let json = r#"{
+            "id": "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d",
+            "name": "The Beatles",
+            "sort-name": "Beatles, The"
+        }"#;
+
+        let artist: MbArtist =
+            serde_json::from_str(json).expect("Should deserialize with missing optional fields");
+        assert_eq!(artist.name, "The Beatles");
+        assert!(artist.country.is_none());
+        assert!(artist.life_span.is_none());
+        assert!(artist.artist_type.is_none());
+    }
+
+    #[test]
+    fn test_deserialize_release_group() {
+        let json = r#"{
+            "id": "1234-5678",
+            "title": "Abbey Road",
+            "primary-type": "Album",
+            "secondary-types": ["Compilation"],
+            "first-release-date": "1969-09-26"
+        }"#;
+
+        let rg: MbReleaseGroup =
+            serde_json::from_str(json).expect("Should deserialize release group");
+        assert_eq!(rg.title, "Abbey Road");
+        assert_eq!(rg.primary_type, Some("Album".to_string()));
+        assert_eq!(rg.secondary_types, vec!["Compilation".to_string()]);
+        assert_eq!(rg.first_release_date, Some("1969-09-26".to_string()));
     }
 }
