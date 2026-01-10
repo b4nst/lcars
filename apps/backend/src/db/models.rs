@@ -1,3 +1,9 @@
+//! Database models for the LCARS application.
+//!
+//! These models will be used by API endpoints in future issues.
+
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
