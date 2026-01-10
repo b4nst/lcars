@@ -14,8 +14,16 @@ use crate::services::indexer::{
 
 const RUTRACKER_BASE_URL: &str = "https://rutracker.org";
 const REQUEST_TIMEOUT_SECS: u64 = 30;
+const USER_AGENT: &str = concat!("LCARS/", env!("CARGO_PKG_VERSION"));
 
 /// Rutracker torrent indexer provider (music focus).
+///
+/// Scrapes Rutracker for music releases, primarily FLAC/lossless content.
+///
+/// **Important Limitation:** This provider returns placeholder magnet links because
+/// Rutracker requires authentication to access actual magnet links. The returned
+/// magnet URIs contain topic IDs that can be used to manually fetch torrents
+/// from the Rutracker website when authenticated.
 pub struct RutrackerProvider {
     client: Client,
     base_url: String,
@@ -31,9 +39,9 @@ impl RutrackerProvider {
     pub fn with_base_url(base_url: String) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .user_agent(USER_AGENT)
             .build()
-            .expect("Failed to create HTTP client");
+            .unwrap_or_else(|_| Client::new());
 
         Self { client, base_url }
     }

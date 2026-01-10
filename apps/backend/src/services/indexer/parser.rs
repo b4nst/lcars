@@ -28,6 +28,9 @@ lazy_static! {
 
     // Title extraction (for movies - stop at year or quality indicators)
     static ref TITLE_RE: Regex = Regex::new(r"^(.+?)(?:\.|_|-|\s)(?:\d{4}|S\d{1,2}E\d{1,2}|2160p|1080p|720p|480p)").unwrap();
+
+    // Simple year pattern for music (standalone 4 digits)
+    static ref YEAR_SIMPLE_RE: Regex = Regex::new(r"\b(\d{4})\b").unwrap();
 }
 
 /// Video quality resolution.
@@ -365,8 +368,7 @@ pub fn parse_music_release(name: &str) -> ParsedRelease {
 
     // Also try simple year pattern for music (just 4 digits)
     if result.year.is_none() {
-        let year_simple = Regex::new(r"\b(\d{4})\b").unwrap();
-        if let Some(caps) = year_simple.captures(name) {
+        if let Some(caps) = YEAR_SIMPLE_RE.captures(name) {
             if let Ok(year) = caps[1].parse::<i32>() {
                 if (1950..=2100).contains(&year) {
                     result.year = Some(year);
