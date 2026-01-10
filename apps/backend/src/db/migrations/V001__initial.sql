@@ -8,6 +8,10 @@ CREATE TABLE users (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TRIGGER users_updated_at AFTER UPDATE ON users BEGIN
+    UPDATE users SET updated_at = datetime('now') WHERE id = NEW.id;
+END;
+
 -- Movies table
 CREATE TABLE movies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,8 +33,15 @@ CREATE TABLE movies (
     file_size INTEGER,
     added_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    added_by INTEGER REFERENCES users(id)
+    added_by INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
+
+CREATE INDEX idx_movies_status ON movies(status);
+CREATE INDEX idx_movies_added_by ON movies(added_by);
+
+CREATE TRIGGER movies_updated_at AFTER UPDATE ON movies BEGIN
+    UPDATE movies SET updated_at = datetime('now') WHERE id = NEW.id;
+END;
 
 -- Movies FTS virtual table
 CREATE VIRTUAL TABLE movies_fts USING fts5(
@@ -41,19 +52,19 @@ CREATE VIRTUAL TABLE movies_fts USING fts5(
 -- Movies FTS triggers
 CREATE TRIGGER movies_ai AFTER INSERT ON movies BEGIN
     INSERT INTO movies_fts(rowid, title, original_title, overview)
-    VALUES (new.id, new.title, new.original_title, new.overview);
+    VALUES (NEW.id, NEW.title, COALESCE(NEW.original_title, ''), COALESCE(NEW.overview, ''));
 END;
 
 CREATE TRIGGER movies_ad AFTER DELETE ON movies BEGIN
     INSERT INTO movies_fts(movies_fts, rowid, title, original_title, overview)
-    VALUES ('delete', old.id, old.title, old.original_title, old.overview);
+    VALUES ('delete', OLD.id, OLD.title, COALESCE(OLD.original_title, ''), COALESCE(OLD.overview, ''));
 END;
 
-CREATE TRIGGER movies_au AFTER UPDATE ON movies BEGIN
+CREATE TRIGGER movies_au_fts AFTER UPDATE ON movies BEGIN
     INSERT INTO movies_fts(movies_fts, rowid, title, original_title, overview)
-    VALUES ('delete', old.id, old.title, old.original_title, old.overview);
+    VALUES ('delete', OLD.id, OLD.title, COALESCE(OLD.original_title, ''), COALESCE(OLD.overview, ''));
     INSERT INTO movies_fts(rowid, title, original_title, overview)
-    VALUES (new.id, new.title, new.original_title, new.overview);
+    VALUES (NEW.id, NEW.title, COALESCE(NEW.original_title, ''), COALESCE(NEW.overview, ''));
 END;
 
 -- TV Shows table
@@ -74,8 +85,15 @@ CREATE TABLE tv_shows (
     quality_limit TEXT DEFAULT '1080p',
     added_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    added_by INTEGER REFERENCES users(id)
+    added_by INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
+
+CREATE INDEX idx_tv_shows_status ON tv_shows(status);
+CREATE INDEX idx_tv_shows_added_by ON tv_shows(added_by);
+
+CREATE TRIGGER tv_shows_updated_at AFTER UPDATE ON tv_shows BEGIN
+    UPDATE tv_shows SET updated_at = datetime('now') WHERE id = NEW.id;
+END;
 
 -- TV Shows FTS virtual table
 CREATE VIRTUAL TABLE tv_shows_fts USING fts5(
@@ -86,19 +104,19 @@ CREATE VIRTUAL TABLE tv_shows_fts USING fts5(
 -- TV Shows FTS triggers
 CREATE TRIGGER tv_shows_ai AFTER INSERT ON tv_shows BEGIN
     INSERT INTO tv_shows_fts(rowid, title, original_title, overview)
-    VALUES (new.id, new.title, new.original_title, new.overview);
+    VALUES (NEW.id, NEW.title, COALESCE(NEW.original_title, ''), COALESCE(NEW.overview, ''));
 END;
 
 CREATE TRIGGER tv_shows_ad AFTER DELETE ON tv_shows BEGIN
     INSERT INTO tv_shows_fts(tv_shows_fts, rowid, title, original_title, overview)
-    VALUES ('delete', old.id, old.title, old.original_title, old.overview);
+    VALUES ('delete', OLD.id, OLD.title, COALESCE(OLD.original_title, ''), COALESCE(OLD.overview, ''));
 END;
 
-CREATE TRIGGER tv_shows_au AFTER UPDATE ON tv_shows BEGIN
+CREATE TRIGGER tv_shows_au_fts AFTER UPDATE ON tv_shows BEGIN
     INSERT INTO tv_shows_fts(tv_shows_fts, rowid, title, original_title, overview)
-    VALUES ('delete', old.id, old.title, old.original_title, old.overview);
+    VALUES ('delete', OLD.id, OLD.title, COALESCE(OLD.original_title, ''), COALESCE(OLD.overview, ''));
     INSERT INTO tv_shows_fts(rowid, title, original_title, overview)
-    VALUES (new.id, new.title, new.original_title, new.overview);
+    VALUES (NEW.id, NEW.title, COALESCE(NEW.original_title, ''), COALESCE(NEW.overview, ''));
 END;
 
 -- Episodes table
@@ -125,6 +143,10 @@ CREATE TABLE episodes (
 
 CREATE INDEX idx_episodes_show ON episodes(show_id);
 CREATE INDEX idx_episodes_status ON episodes(status);
+
+CREATE TRIGGER episodes_updated_at AFTER UPDATE ON episodes BEGIN
+    UPDATE episodes SET updated_at = datetime('now') WHERE id = NEW.id;
+END;
 
 -- Indexers table
 CREATE TABLE indexers (
@@ -157,14 +179,14 @@ CREATE TABLE downloads (
     magnet TEXT NOT NULL,
     status TEXT NOT NULL
         CHECK (status IN ('queued', 'downloading', 'seeding', 'processing', 'completed', 'failed', 'paused')),
-    progress REAL NOT NULL DEFAULT 0,
-    download_speed INTEGER DEFAULT 0,
-    upload_speed INTEGER DEFAULT 0,
-    size_bytes INTEGER,
-    downloaded_bytes INTEGER DEFAULT 0,
-    uploaded_bytes INTEGER DEFAULT 0,
-    ratio REAL DEFAULT 0,
-    peers INTEGER DEFAULT 0,
+    progress REAL NOT NULL DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
+    download_speed INTEGER DEFAULT 0 CHECK (download_speed >= 0),
+    upload_speed INTEGER DEFAULT 0 CHECK (upload_speed >= 0),
+    size_bytes INTEGER CHECK (size_bytes >= 0),
+    downloaded_bytes INTEGER DEFAULT 0 CHECK (downloaded_bytes >= 0),
+    uploaded_bytes INTEGER DEFAULT 0 CHECK (uploaded_bytes >= 0),
+    ratio REAL DEFAULT 0 CHECK (ratio >= 0),
+    peers INTEGER DEFAULT 0 CHECK (peers >= 0),
     error_message TEXT,
     added_at TEXT NOT NULL DEFAULT (datetime('now')),
     started_at TEXT,
@@ -182,13 +204,14 @@ CREATE TABLE activity (
     media_type TEXT,
     media_id INTEGER,
     download_id INTEGER,
-    user_id INTEGER REFERENCES users(id),
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     metadata TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX idx_activity_type ON activity(event_type);
 CREATE INDEX idx_activity_created ON activity(created_at);
+CREATE INDEX idx_activity_user ON activity(user_id);
 
 -- Sessions table
 CREATE TABLE sessions (

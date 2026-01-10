@@ -38,9 +38,21 @@ impl From<refinery::Error> for DbError {
     }
 }
 
+/// Configure connection with recommended pragmas
+fn configure_connection(conn: &Connection) -> Result<(), DbError> {
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA busy_timeout = 5000;",
+    )?;
+    Ok(())
+}
+
 /// Initialize database connection and run migrations
 pub fn init_db<P: AsRef<Path>>(db_path: P) -> Result<Connection, DbError> {
     let mut conn = Connection::open(db_path)?;
+    configure_connection(&conn)?;
     embedded::migrations::runner().run(&mut conn)?;
     Ok(conn)
 }
@@ -48,6 +60,7 @@ pub fn init_db<P: AsRef<Path>>(db_path: P) -> Result<Connection, DbError> {
 /// Initialize an in-memory database (useful for testing)
 pub fn init_db_memory() -> Result<Connection, DbError> {
     let mut conn = Connection::open_in_memory()?;
+    configure_connection(&conn)?;
     embedded::migrations::runner().run(&mut conn)?;
     Ok(conn)
 }
@@ -90,5 +103,16 @@ mod tests {
             .unwrap();
 
         assert_eq!(count, 4);
+    }
+
+    #[test]
+    fn test_foreign_keys_enabled() {
+        let conn = init_db_memory().expect("Failed to initialize in-memory database");
+
+        let fk_enabled: i32 = conn
+            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(fk_enabled, 1, "Foreign keys should be enabled");
     }
 }
