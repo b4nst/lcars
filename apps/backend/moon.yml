@@ -3,44 +3,70 @@ $schema: 'https://moonrepo.dev/schemas/project.json'
 
 type: 'application'
 language: 'rust'
+stack: 'backend'
+tags:
+  - 'rust'
+  - 'api'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+  cargo:
+    - 'Cargo.toml'
+    - 'Cargo.lock'
 
 tasks:
   build:
-    command: 'cargo build --release'
+    command: 'cargo'
+    args:
+      - 'build'
+      - '--release'
     inputs:
-      - 'src/**/*'
-      - 'Cargo.toml'
+      - '@group(sources)'
+      - '@group(cargo)'
     outputs:
       - 'target/release/backend'
 
   dev:
-    command: 'cargo run'
+    command: 'cargo'
+    args: 'run'
     local: true
+    options:
+      persistent: true
 
   check:
-    command: 'cargo check'
+    command: 'cargo'
+    args: 'check'
     inputs:
-      - 'src/**/*'
-      - 'Cargo.toml'
+      - '@group(sources)'
+      - '@group(cargo)'
 
   test:
-    command: 'cargo test'
+    command: 'cargo'
+    args: 'test'
     inputs:
-      - 'src/**/*'
-      - 'Cargo.toml'
+      - '@group(sources)'
+      - '@group(cargo)'
+
+  fmt:
+    command: 'cargo'
+    args: 'fmt'
+    inputs:
+      - '@group(sources)'
+    local: true
 
   fmt-check:
     extends: 'fmt'
-    args: 'check'
-
-  fmt:
-    command: 'cargo fmt'
-    inputs:
-      - 'src/**/*'
-    local: true
+    args: '--check'
+    local: false
 
   clippy:
-    command: 'cargo clippy -- -D warnings'
+    command: 'cargo'
+    args:
+      - 'clippy'
+      - '--'
+      - '-D'
+      - 'warnings'
     inputs:
-      - 'src/**/*'
-      - 'Cargo.toml'
+      - '@group(sources)'
+      - '@group(cargo)'
