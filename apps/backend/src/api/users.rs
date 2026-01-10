@@ -2,13 +2,14 @@
 
 use axum::{
     extract::{Path, State},
-    Json,
+    Extension, Json,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::api::auth::SuccessResponse;
 use crate::db::models::UserRole;
 use crate::error::{AppError, Result};
+use crate::services::Claims;
 use crate::AppState;
 
 /// Create user request body.
@@ -135,20 +136,41 @@ pub async fn create_user(
 /// Updates a user (admin only).
 pub async fn update_user(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(user_id): Path<i64>,
     Json(body): Json<UpdateUserRequest>,
 ) -> Result<Json<UserResponse>> {
     let db = state.db.lock().await;
 
-    // Check if user exists
-    let exists: bool = db.query_row(
-        "SELECT EXISTS(SELECT 1 FROM users WHERE id = ?1)",
-        [user_id],
-        |row| row.get(0),
-    )?;
+    // Check if user exists and get their current role
+    let current_role: String = db
+        .query_row("SELECT role FROM users WHERE id = ?1", [user_id], |row| {
+            row.get(0)
+        })
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                AppError::NotFound("User not found".to_string())
+            }
+            _ => AppError::Sqlite(e),
+        })?;
 
-    if !exists {
-        return Err(AppError::NotFound("User not found".to_string()));
+    // Prevent demoting the last admin
+    if current_role == "admin" {
+        if let Some(ref new_role) = body.role {
+            if *new_role != UserRole::Admin {
+                let admin_count: i64 = db.query_row(
+                    "SELECT COUNT(*) FROM users WHERE role = 'admin'",
+                    [],
+                    |row| row.get(0),
+                )?;
+
+                if admin_count <= 1 {
+                    return Err(AppError::BadRequest(
+                        "Cannot demote the last admin".to_string(),
+                    ));
+                }
+            }
+        }
     }
 
     // Build update query dynamically
@@ -221,7 +243,7 @@ pub async fn update_user(
         },
     )?;
 
-    tracing::info!(user_id = user.id, "User updated");
+    tracing::info!(user_id = user.id, updated_by = claims.sub, "User updated");
 
     Ok(Json(user))
 }
@@ -231,19 +253,43 @@ pub async fn update_user(
 /// Deletes a user (admin only).
 pub async fn delete_user(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(user_id): Path<i64>,
 ) -> Result<Json<SuccessResponse>> {
+    // Prevent self-deletion
+    if user_id == claims.sub {
+        return Err(AppError::BadRequest(
+            "Cannot delete your own account".to_string(),
+        ));
+    }
+
     let db = state.db.lock().await;
 
-    // Check if user exists
-    let exists: bool = db.query_row(
-        "SELECT EXISTS(SELECT 1 FROM users WHERE id = ?1)",
-        [user_id],
-        |row| row.get(0),
-    )?;
+    // Check if user exists and get their role
+    let user_role: String = db
+        .query_row("SELECT role FROM users WHERE id = ?1", [user_id], |row| {
+            row.get(0)
+        })
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                AppError::NotFound("User not found".to_string())
+            }
+            _ => AppError::Sqlite(e),
+        })?;
 
-    if !exists {
-        return Err(AppError::NotFound("User not found".to_string()));
+    // Prevent deleting the last admin
+    if user_role == "admin" {
+        let admin_count: i64 = db.query_row(
+            "SELECT COUNT(*) FROM users WHERE role = 'admin'",
+            [],
+            |row| row.get(0),
+        )?;
+
+        if admin_count <= 1 {
+            return Err(AppError::BadRequest(
+                "Cannot delete the last admin account".to_string(),
+            ));
+        }
     }
 
     // Delete associated sessions first
@@ -252,7 +298,7 @@ pub async fn delete_user(
     // Delete the user
     db.execute("DELETE FROM users WHERE id = ?1", [user_id])?;
 
-    tracing::info!(user_id = user_id, "User deleted");
+    tracing::info!(user_id = user_id, deleted_by = claims.sub, "User deleted");
 
     Ok(Json(SuccessResponse {
         message: "User deleted successfully".to_string(),

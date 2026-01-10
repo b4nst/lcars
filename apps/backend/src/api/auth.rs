@@ -8,6 +8,11 @@ use crate::error::{AppError, Result};
 use crate::services::Claims;
 use crate::AppState;
 
+/// Dummy hash for timing attack prevention.
+/// This is a valid Argon2 hash that will always fail verification.
+const DUMMY_HASH: &str =
+    "$argon2id$v=19$m=19456,t=2,p=1$dGltaW5nYXR0YWNr$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
 /// Login request body.
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
@@ -50,50 +55,48 @@ pub async fn login(
         ));
     }
 
-    // Look up user by username
     let db = state.db.lock().await;
-
-    let user = db
-        .query_row(
-            "SELECT id, username, password_hash, role FROM users WHERE username = ?1",
-            [&body.username],
-            |row| {
-                let role_str: String = row.get(3)?;
-                let role = match role_str.as_str() {
-                    "admin" => UserRole::Admin,
-                    _ => UserRole::User,
-                };
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    role,
-                ))
-            },
-        )
-        .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => AppError::Unauthorized,
-            _ => AppError::Sqlite(e),
-        })?;
-
-    let (user_id, username, password_hash, role) = user;
-
-    // Verify password
     let auth_service = state.auth_service();
-    if !auth_service.verify_password(&body.password, &password_hash)? {
+
+    // Look up user by username
+    let user_result = db.query_row(
+        "SELECT id, username, password_hash, role FROM users WHERE username = ?1",
+        [&body.username],
+        |row| {
+            let role_str: String = row.get(3)?;
+            let role = match role_str.as_str() {
+                "admin" => UserRole::Admin,
+                _ => UserRole::User,
+            };
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                role,
+            ))
+        },
+    );
+
+    // Perform constant-time verification to prevent timing attacks
+    let (user_id, username, role, authenticated) = match user_result {
+        Ok((id, name, hash, r)) => {
+            let valid = auth_service.verify_password(&body.password, &hash)?;
+            (id, name, r, valid)
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            // Perform dummy verification to prevent timing attack
+            let _ = auth_service.verify_password(&body.password, DUMMY_HASH);
+            return Err(AppError::Unauthorized);
+        }
+        Err(e) => return Err(AppError::Sqlite(e)),
+    };
+
+    if !authenticated {
         return Err(AppError::Unauthorized);
     }
 
-    // Create JWT token
+    // Create JWT token (stateless - no session storage needed)
     let token = auth_service.create_token(user_id, &role.to_string())?;
-
-    // Create session in database
-    let token_hash = auth_service.hash_password(&token)?;
-    db.execute(
-        "INSERT INTO sessions (user_id, token_hash, expires_at)
-         VALUES (?1, ?2, datetime('now', '+24 hours'))",
-        rusqlite::params![user_id, token_hash],
-    )?;
 
     tracing::info!(user_id = user_id, username = %username, "User logged in");
 
@@ -109,17 +112,9 @@ pub async fn login(
 
 /// POST /api/auth/logout
 ///
-/// Invalidates the current session.
-pub async fn logout(
-    State(state): State<AppState>,
-    Extension(claims): Extension<Claims>,
-) -> Result<Json<SuccessResponse>> {
-    let db = state.db.lock().await;
-
-    // Delete all sessions for this user (simple approach)
-    // In production, you might want to invalidate only the current token
-    db.execute("DELETE FROM sessions WHERE user_id = ?1", [claims.sub])?;
-
+/// Logs out the user. Since we use stateless JWT tokens, this is a no-op
+/// on the server side. The client should discard the token.
+pub async fn logout(Extension(claims): Extension<Claims>) -> Result<Json<SuccessResponse>> {
     tracing::info!(user_id = claims.sub, "User logged out");
 
     Ok(Json(SuccessResponse {
