@@ -1,6 +1,6 @@
 {
   description = "LCARS - Media Management Monorepo";
-  
+
   inputs = {
     nixpkgs.url = "nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
@@ -15,7 +15,7 @@
       flake = false;
     };
   };
-  
+
   outputs =
     {
       self,
@@ -34,10 +34,13 @@
             t3rapkgs.overlays.default
           ];
         };
+
         # Create dev shells using t3ra pkgs
         shells = t3rapkgs.lib.devshell.mkDevShells {
           inherit pkgs system;
           name = "lcars";
+          defaultShell = "nu";
+
           packages = with pkgs; [
             # Rust toolchain
             rustc
