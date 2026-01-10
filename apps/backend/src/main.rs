@@ -1,8 +1,4 @@
-use axum::{
-    response::Json,
-    routing::get,
-    Router,
-};
+use axum::{response::Json, routing::get, Router};
 use serde::Serialize;
 use std::net::SocketAddr;
 
@@ -21,8 +17,7 @@ async fn health_check() -> Json<ApiResponse> {
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new()
-        .route("/health", get(health_check));
+    let app = Router::new().route("/health", get(health_check));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
     println!("🚀 LCARS Backend listening on {}", addr);

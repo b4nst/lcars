@@ -29,10 +29,15 @@ tasks:
       - 'src/**/*'
       - 'Cargo.toml'
 
+  fmt-check:
+    extends: 'fmt'
+    args: 'check'
+
   fmt:
-    command: 'cargo fmt -- --check'
+    command: 'cargo fmt'
     inputs:
       - 'src/**/*'
+    local: true
 
   clippy:
     command: 'cargo clippy -- -D warnings'
