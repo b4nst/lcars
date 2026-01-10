@@ -19,7 +19,7 @@ mod middleware;
 mod services;
 
 use config::Config;
-use services::{AuthService, IndexerManager, MusicBrainzClient, TmdbClient};
+use services::{AuthService, IndexerManager, MusicBrainzClient, TmdbClient, TorrentEngine};
 
 /// Application state shared across handlers
 #[derive(Clone)]
@@ -30,6 +30,7 @@ pub struct AppState {
     tmdb_client: Option<Arc<TmdbClient>>,
     musicbrainz_client: Option<Arc<MusicBrainzClient>>,
     indexer_manager: Arc<IndexerManager>,
+    torrent_engine: Option<Arc<TorrentEngine>>,
 }
 
 impl AppState {
@@ -51,6 +52,11 @@ impl AppState {
     /// Get a reference to the indexer manager.
     pub fn indexer_manager(&self) -> &IndexerManager {
         &self.indexer_manager
+    }
+
+    /// Get a reference to the torrent engine, if initialized.
+    pub fn torrent_engine(&self) -> Option<&TorrentEngine> {
+        self.torrent_engine.as_deref()
     }
 }
 
@@ -245,6 +251,22 @@ async fn main() {
         indexer_manager.providers().len()
     );
 
+    // Create torrent engine
+    let torrent_engine = match TorrentEngine::new_shared(config.torrent.clone()).await {
+        Ok(engine) => {
+            tracing::info!(
+                download_dir = ?config.torrent.download_dir,
+                "Torrent engine initialized"
+            );
+            Some(engine)
+        }
+        Err(e) => {
+            tracing::error!("Failed to create torrent engine: {}", e);
+            tracing::warn!("Downloads will be unavailable until torrent engine is fixed");
+            None
+        }
+    };
+
     // Create application state
     let state = AppState {
         config: Arc::new(config.clone()),
@@ -253,6 +275,7 @@ async fn main() {
         tmdb_client,
         musicbrainz_client,
         indexer_manager,
+        torrent_engine,
     };
 
     // Build auth routes (public)
