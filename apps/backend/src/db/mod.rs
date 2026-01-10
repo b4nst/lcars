@@ -1,0 +1,94 @@
+use rusqlite::Connection;
+use std::path::Path;
+
+pub mod models;
+pub mod queries;
+
+mod embedded {
+    use refinery::embed_migrations;
+    embed_migrations!("src/db/migrations");
+}
+
+#[derive(Debug)]
+pub enum DbError {
+    Connection(rusqlite::Error),
+    Migration(refinery::Error),
+}
+
+impl std::fmt::Display for DbError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DbError::Connection(e) => write!(f, "Database connection error: {}", e),
+            DbError::Migration(e) => write!(f, "Migration error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for DbError {}
+
+impl From<rusqlite::Error> for DbError {
+    fn from(err: rusqlite::Error) -> Self {
+        DbError::Connection(err)
+    }
+}
+
+impl From<refinery::Error> for DbError {
+    fn from(err: refinery::Error) -> Self {
+        DbError::Migration(err)
+    }
+}
+
+/// Initialize database connection and run migrations
+pub fn init_db<P: AsRef<Path>>(db_path: P) -> Result<Connection, DbError> {
+    let mut conn = Connection::open(db_path)?;
+    embedded::migrations::runner().run(&mut conn)?;
+    Ok(conn)
+}
+
+/// Initialize an in-memory database (useful for testing)
+pub fn init_db_memory() -> Result<Connection, DbError> {
+    let mut conn = Connection::open_in_memory()?;
+    embedded::migrations::runner().run(&mut conn)?;
+    Ok(conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_init_db_memory() {
+        let conn = init_db_memory().expect("Failed to initialize in-memory database");
+
+        let tables: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(tables.contains(&"users".to_string()));
+        assert!(tables.contains(&"movies".to_string()));
+        assert!(tables.contains(&"tv_shows".to_string()));
+        assert!(tables.contains(&"episodes".to_string()));
+        assert!(tables.contains(&"artists".to_string()));
+        assert!(tables.contains(&"albums".to_string()));
+        assert!(tables.contains(&"tracks".to_string()));
+        assert!(tables.contains(&"indexers".to_string()));
+        assert!(tables.contains(&"downloads".to_string()));
+        assert!(tables.contains(&"activity".to_string()));
+        assert!(tables.contains(&"sessions".to_string()));
+    }
+
+    #[test]
+    fn test_default_indexers() {
+        let conn = init_db_memory().expect("Failed to initialize in-memory database");
+
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM indexers", [], |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(count, 4);
+    }
+}
