@@ -15,8 +15,12 @@ use crate::services::indexer::{
 const EZTV_BASE_URL: &str = "https://eztv.re";
 const EZTV_API_URL: &str = "https://eztv.re/api/get-torrents";
 const REQUEST_TIMEOUT_SECS: u64 = 30;
+const USER_AGENT: &str = concat!("LCARS/", env!("CARGO_PKG_VERSION"));
 
 /// EZTV torrent indexer provider (TV shows only).
+///
+/// Uses the EZTV JSON API for searching TV show torrents.
+/// For best results, provide an IMDB ID in the search query.
 pub struct EztvProvider {
     client: Client,
     base_url: String,
@@ -33,9 +37,9 @@ impl EztvProvider {
     pub fn with_urls(base_url: String, api_url: String) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .user_agent(USER_AGENT)
             .build()
-            .expect("Failed to create HTTP client");
+            .unwrap_or_else(|_| Client::new());
 
         Self {
             client,

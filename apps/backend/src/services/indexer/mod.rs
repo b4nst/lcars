@@ -50,11 +50,22 @@ pub struct SearchQuery {
     pub album: Option<String>,
 }
 
+/// Maximum allowed length for search queries.
+const MAX_QUERY_LENGTH: usize = 500;
+
 impl SearchQuery {
     /// Create a new search query with the given query string.
+    ///
+    /// The query will be trimmed and truncated to `MAX_QUERY_LENGTH` characters.
     pub fn new(query: impl Into<String>) -> Self {
+        let mut query = query.into();
+        // Trim whitespace and truncate to max length
+        query = query.trim().to_string();
+        if query.len() > MAX_QUERY_LENGTH {
+            query.truncate(MAX_QUERY_LENGTH);
+        }
         Self {
-            query: query.into(),
+            query,
             ..Default::default()
         }
     }

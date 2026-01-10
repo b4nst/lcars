@@ -15,8 +15,12 @@ use crate::services::indexer::{
 const YTS_BASE_URL: &str = "https://yts.mx";
 const YTS_API_URL: &str = "https://yts.mx/api/v2/list_movies.json";
 const REQUEST_TIMEOUT_SECS: u64 = 30;
+const USER_AGENT: &str = concat!("LCARS/", env!("CARGO_PKG_VERSION"));
 
 /// YTS torrent indexer provider (movies only).
+///
+/// Uses the YTS JSON API for searching movie torrents.
+/// Only supports movies; TV shows and music are not available.
 pub struct YtsProvider {
     client: Client,
     base_url: String,
@@ -33,9 +37,9 @@ impl YtsProvider {
     pub fn with_urls(base_url: String, api_url: String) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .user_agent(USER_AGENT)
             .build()
-            .expect("Failed to create HTTP client");
+            .unwrap_or_else(|_| Client::new());
 
         Self {
             client,
