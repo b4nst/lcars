@@ -1,3 +1,9 @@
+//! Database module for the LCARS application.
+//!
+//! Provides database initialization, migrations, and models.
+
+#![allow(dead_code)]
+
 use rusqlite::Connection;
 use std::path::Path;
 
