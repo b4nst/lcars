@@ -390,12 +390,16 @@ async fn main() {
             middleware::auth_middleware,
         ));
 
+    // Build TV shows routes (authenticated)
+    let tv_routes = api::tv::router(state.clone());
+
     // Build main router with state
     let app = Router::new()
         .route("/health", get(health_check))
         .nest("/api/auth", auth_routes)
         .nest("/api/users", user_routes)
         .nest("/api/movies", movies_routes)
+        .nest("/api/tv", tv_routes)
         .nest("/api/system", system_routes)
         .with_state(state);
 
