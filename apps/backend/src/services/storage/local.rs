@@ -5,7 +5,7 @@
 #![allow(dead_code)]
 
 use async_trait::async_trait;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::error::{AppError, Result};
 
@@ -24,6 +24,65 @@ impl LocalMount {
     pub fn new(name: String, root: PathBuf) -> Self {
         Self { name, root }
     }
+
+    /// Validates that a path is safe and doesn't escape the mount root.
+    ///
+    /// Checks for:
+    /// - Path traversal attempts using ".."
+    /// - Symlinks that could escape the root
+    ///
+    /// Returns the full validated path if safe.
+    async fn validate_path(&self, path: &Path) -> Result<PathBuf> {
+        // Check for path traversal attempts
+        for component in path.components() {
+            if matches!(component, Component::ParentDir) {
+                return Err(AppError::BadRequest(
+                    "Path cannot contain parent directory references (..)".to_string(),
+                ));
+            }
+        }
+
+        let full_path = self.root.join(path);
+
+        // Check each path component for symlinks that could escape root
+        let mut current = self.root.clone();
+        for component in path.components() {
+            match component {
+                Component::Normal(part) => {
+                    current.push(part);
+                    // Check if this path segment is a symlink
+                    if let Ok(metadata) = tokio::fs::symlink_metadata(&current).await {
+                        if metadata.is_symlink() {
+                            // Resolve the symlink and check if it escapes root
+                            if let Ok(resolved) = tokio::fs::canonicalize(&current).await {
+                                let canonical_root =
+                                    tokio::fs::canonicalize(&self.root).await.map_err(|e| {
+                                        AppError::Internal(format!(
+                                            "Failed to canonicalize root: {}",
+                                            e
+                                        ))
+                                    })?;
+                                if !resolved.starts_with(&canonical_root) {
+                                    return Err(AppError::BadRequest(
+                                        "Path contains symlink escaping mount root".to_string(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+                Component::CurDir => {}
+                _ => {
+                    return Err(AppError::BadRequest(format!(
+                        "Invalid path component: {:?}",
+                        component
+                    )));
+                }
+            }
+        }
+
+        Ok(full_path)
+    }
 }
 
 #[async_trait]
@@ -41,7 +100,11 @@ impl Mount for LocalMount {
     }
 
     async fn available(&self) -> bool {
-        self.root.exists() && self.root.is_dir()
+        // Use async metadata check instead of blocking is_dir()
+        match tokio::fs::metadata(&self.root).await {
+            Ok(metadata) => metadata.is_dir(),
+            Err(_) => false,
+        }
     }
 
     async fn free_space(&self) -> Result<u64> {
@@ -52,7 +115,13 @@ impl Mount for LocalMount {
             let path_cstr = std::ffi::CString::new(self.root.to_string_lossy().as_bytes())
                 .map_err(|e| AppError::Internal(format!("Invalid path: {}", e)))?;
 
+            // SAFETY: statvfs struct can be safely zero-initialized as it contains
+            // only primitive integer types. The struct lifetime is contained within
+            // this function and is only written to by the statvfs call.
             let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+
+            // SAFETY: path_cstr is a valid CString pointer that lives for the duration
+            // of this call. stat is a valid mutable reference to a statvfs struct.
             let result = unsafe { libc::statvfs(path_cstr.as_ptr(), &mut stat) };
 
             if result != 0 {
@@ -65,8 +134,10 @@ impl Mount for LocalMount {
 
             // Free space = available blocks * block size
             // Use f_bavail (available to non-root) rather than f_bfree
-            let free_bytes = stat.f_bavail as u64 * stat.f_frsize;
-            Ok(free_bytes)
+            // Use checked arithmetic to prevent overflow
+            (stat.f_bavail as u64)
+                .checked_mul(stat.f_frsize)
+                .ok_or_else(|| AppError::Internal("Overflow calculating free space".to_string()))
         }
 
         #[cfg(not(unix))]
@@ -79,11 +150,14 @@ impl Mount for LocalMount {
     }
 
     async fn exists(&self, path: &Path) -> bool {
-        self.root.join(path).exists()
+        match self.validate_path(path).await {
+            Ok(full_path) => tokio::fs::metadata(&full_path).await.is_ok(),
+            Err(_) => false,
+        }
     }
 
     async fn write_file(&self, source: &Path, dest: &Path) -> Result<()> {
-        let full_dest = self.root.join(dest);
+        let full_dest = self.validate_path(dest).await?;
 
         // Create parent directories
         if let Some(parent) = full_dest.parent() {
@@ -110,7 +184,7 @@ impl Mount for LocalMount {
     }
 
     async fn delete_file(&self, path: &Path) -> Result<()> {
-        let full_path = self.root.join(path);
+        let full_path = self.validate_path(path).await?;
 
         tokio::fs::remove_file(&full_path).await.map_err(|e| {
             AppError::Internal(format!("Failed to delete file {:?}: {}", full_path, e))
@@ -121,7 +195,7 @@ impl Mount for LocalMount {
     }
 
     async fn create_dir_all(&self, path: &Path) -> Result<()> {
-        let full_path = self.root.join(path);
+        let full_path = self.validate_path(path).await?;
 
         tokio::fs::create_dir_all(&full_path).await.map_err(|e| {
             AppError::Internal(format!("Failed to create directory {:?}: {}", full_path, e))
@@ -227,5 +301,50 @@ mod tests {
         let free = mount.free_space().await.unwrap();
         // Should return some positive value
         assert!(free > 0);
+    }
+
+    #[tokio::test]
+    async fn test_path_traversal_prevention() {
+        let (_temp, mount) = create_test_mount();
+
+        // Should reject paths with parent directory traversal
+        let result = mount
+            .write_file(Path::new("/tmp/test"), Path::new("../escape"))
+            .await;
+        assert!(result.is_err());
+
+        let result = mount
+            .write_file(Path::new("/tmp/test"), Path::new("foo/../../bar"))
+            .await;
+        assert!(result.is_err());
+
+        let result = mount.delete_file(Path::new("../etc/passwd")).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_path_traversal_in_exists() {
+        let (_temp, mount) = create_test_mount();
+
+        // Should return false for path traversal attempts (doesn't expose error)
+        assert!(!mount.exists(Path::new("../escape")).await);
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_symlink_escape_prevention() {
+        let (temp, mount) = create_test_mount();
+
+        // Create a symlink pointing outside the mount
+        let external_dir = TempDir::new().unwrap();
+        let external_file = external_dir.path().join("external.txt");
+        fs::write(&external_file, "external content").unwrap();
+
+        let symlink_path = temp.path().join("escape_link");
+        std::os::unix::fs::symlink(external_dir.path(), &symlink_path).unwrap();
+
+        // Should reject operations through symlink that escapes root
+        let result = mount.exists(Path::new("escape_link/external.txt")).await;
+        assert!(!result);
     }
 }
