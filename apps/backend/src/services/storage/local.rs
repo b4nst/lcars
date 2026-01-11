@@ -135,7 +135,10 @@ impl Mount for LocalMount {
             // Free space = available blocks * block size
             // Use f_bavail (available to non-root) rather than f_bfree
             // Use checked arithmetic to prevent overflow
-            (stat.f_bavail as u64)
+            // Note: f_bavail type varies by platform (u32 on macOS, u64 on Linux)
+            #[allow(clippy::unnecessary_cast)]
+            let bavail = stat.f_bavail as u64;
+            bavail
                 .checked_mul(stat.f_frsize)
                 .ok_or_else(|| AppError::Internal("Overflow calculating free space".to_string()))
         }
