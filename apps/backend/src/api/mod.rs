@@ -2,6 +2,8 @@
 
 pub mod auth;
 pub mod movies;
+pub mod music;
+pub mod search;
 pub mod system;
 pub mod tv;
 pub mod users;

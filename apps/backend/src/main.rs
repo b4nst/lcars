@@ -393,6 +393,18 @@ async fn main() {
     // Build TV shows routes (authenticated)
     let tv_routes = api::tv::router(state.clone());
 
+    // Build music routes (authenticated)
+    let music_routes = api::music::router(state.clone());
+
+    // Build search routes (authenticated)
+    let search_routes = Router::new()
+        .route("/musicbrainz/artists", get(api::search::search_mb_artists))
+        .route("/musicbrainz/albums", get(api::search::search_mb_albums))
+        .layer(axum_mw::from_fn_with_state(
+            state.clone(),
+            middleware::auth_middleware,
+        ));
+
     // Build main router with state
     let app = Router::new()
         .route("/health", get(health_check))
@@ -400,6 +412,8 @@ async fn main() {
         .nest("/api/users", user_routes)
         .nest("/api/movies", movies_routes)
         .nest("/api/tv", tv_routes)
+        .nest("/api/music", music_routes)
+        .nest("/api/search", search_routes)
         .nest("/api/system", system_routes)
         .with_state(state);
 
