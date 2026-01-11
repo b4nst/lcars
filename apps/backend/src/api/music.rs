@@ -317,10 +317,18 @@ pub async fn add_artist(
     Extension(claims): Extension<Claims>,
     Json(body): Json<AddArtistRequest>,
 ) -> Result<Json<ArtistWithAlbums>> {
-    // Validate MBID format (should be UUID)
-    if body.mbid.trim().is_empty() {
+    // Validate MBID format (must be a valid UUID)
+    let mbid = body.mbid.trim();
+    if mbid.is_empty() {
         return Err(AppError::BadRequest(
             "MusicBrainz ID is required".to_string(),
+        ));
+    }
+    // Validate UUID format (MusicBrainz uses UUIDs as identifiers)
+    // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars with 4 dashes)
+    if !is_valid_uuid(mbid) {
+        return Err(AppError::BadRequest(
+            "Invalid MusicBrainz ID format (must be UUID)".to_string(),
         ));
     }
 
@@ -330,7 +338,7 @@ pub async fn add_artist(
         .ok_or_else(|| AppError::Internal("MusicBrainz client not configured".to_string()))?;
 
     // Fetch artist details from MusicBrainz
-    let mb_artist = mb_client.get_artist(&body.mbid).await?;
+    let mb_artist = mb_client.get_artist(mbid).await?;
 
     let monitored = body.monitored.unwrap_or(true);
     let quality_limit = body.quality_limit.unwrap_or_else(|| "flac".to_string());
@@ -340,14 +348,14 @@ pub async fn add_artist(
     // Check if artist already exists
     let exists: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM artists WHERE mbid = ?1)",
-        [&body.mbid],
+        [mbid],
         |row| row.get(0),
     )?;
 
     if exists {
         return Err(AppError::BadRequest(format!(
             "Artist with MusicBrainz ID {} already exists",
-            body.mbid
+            mbid
         )));
     }
 
@@ -364,7 +372,7 @@ pub async fn add_artist(
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
         "#,
         rusqlite::params![
-            body.mbid,
+            mbid,
             mb_artist.name,
             mb_artist.sort_name,
             mb_artist.disambiguation,
@@ -1726,6 +1734,11 @@ fn map_track_row(row: &rusqlite::Row) -> rusqlite::Result<Track> {
 }
 
 /// Calculate album status based on track statuses.
+///
+/// TODO: Use this function to automatically update album status when:
+/// - A track download completes (status changes to Available)
+/// - Track status is updated via API
+/// - Album refresh discovers new tracks
 #[allow(dead_code)]
 fn calculate_album_status(tracks: &[Track]) -> AlbumStatus {
     if tracks.is_empty() {
@@ -1744,4 +1757,32 @@ fn calculate_album_status(tracks: &[Track]) -> AlbumStatus {
     } else {
         AlbumStatus::Partial
     }
+}
+
+/// Validate that a string is a valid UUID format.
+///
+/// UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 characters with 4 dashes)
+/// where x is a hexadecimal digit (0-9, a-f, A-F).
+fn is_valid_uuid(s: &str) -> bool {
+    if s.len() != 36 {
+        return false;
+    }
+
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 5 {
+        return false;
+    }
+
+    // Expected lengths: 8-4-4-4-12
+    let expected_lengths = [8, 4, 4, 4, 12];
+    for (part, expected_len) in parts.iter().zip(expected_lengths.iter()) {
+        if part.len() != *expected_len {
+            return false;
+        }
+        if !part.chars().all(|c| c.is_ascii_hexdigit()) {
+            return false;
+        }
+    }
+
+    true
 }
