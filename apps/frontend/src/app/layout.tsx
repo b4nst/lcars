@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { LcarsFrame } from '@/components/lcars';
+import { Providers } from '@/lib/providers';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <LcarsFrame>{children}</LcarsFrame>
+        <Providers>
+          <LcarsFrame>{children}</LcarsFrame>
+        </Providers>
       </body>
     </html>
   );
