@@ -3,4 +3,5 @@
 pub mod auth;
 pub mod movies;
 pub mod system;
+pub mod tv;
 pub mod users;
