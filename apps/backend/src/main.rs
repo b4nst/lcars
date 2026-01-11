@@ -20,8 +20,8 @@ mod services;
 
 use config::Config;
 use services::{
-    AuthService, IndexerManager, JobContext, MusicBrainzClient, Scheduler, TmdbClient,
-    TorrentEngine,
+    AuthService, IndexerManager, JobContext, MusicBrainzClient, Scheduler, StorageManager,
+    TmdbClient, TorrentEngine,
 };
 
 /// Application state shared across handlers
@@ -35,6 +35,8 @@ pub struct AppState {
     indexer_manager: Arc<IndexerManager>,
     torrent_engine: Option<Arc<TorrentEngine>>,
     scheduler: Option<Arc<Scheduler>>,
+    start_time: std::time::Instant,
+    storage_manager: Option<Arc<StorageManager>>,
 }
 
 impl AppState {
@@ -66,6 +68,16 @@ impl AppState {
     /// Get a reference to the scheduler, if initialized.
     pub fn scheduler(&self) -> Option<&Scheduler> {
         self.scheduler.as_deref()
+    }
+
+    /// Get the start time of the application.
+    pub fn start_time(&self) -> std::time::Instant {
+        self.start_time
+    }
+
+    /// Get a reference to the storage manager, if initialized.
+    pub fn storage_manager(&self) -> Option<&StorageManager> {
+        self.storage_manager.as_deref()
     }
 
     /// Create a job context for manual job execution.
@@ -314,6 +326,22 @@ async fn main() {
         }
     };
 
+    // Create storage manager
+    let storage_manager = match StorageManager::new(config.storage.clone()) {
+        Ok(manager) => {
+            tracing::info!(
+                mounts = manager.list_mounts().len(),
+                "Storage manager initialized"
+            );
+            Some(Arc::new(manager))
+        }
+        Err(e) => {
+            tracing::error!("Failed to create storage manager: {}", e);
+            tracing::warn!("File organization will be unavailable");
+            None
+        }
+    };
+
     // Create application state
     let state = AppState {
         config: Arc::new(config.clone()),
@@ -324,6 +352,8 @@ async fn main() {
         indexer_manager,
         torrent_engine,
         scheduler,
+        start_time: std::time::Instant::now(),
+        storage_manager,
     };
 
     // Build auth routes (public)
@@ -360,15 +390,38 @@ async fn main() {
             middleware::auth_middleware,
         ));
 
-    // Build system routes (admin only)
-    let system_routes = Router::new()
+    // Build system routes - some authenticated, some admin only
+    let system_auth_routes = Router::new()
+        .route("/status", get(api::system::get_system_status))
+        .route("/activity", get(api::system::get_activity))
+        .layer(axum_mw::from_fn_with_state(
+            state.clone(),
+            middleware::auth_middleware,
+        ));
+
+    let system_admin_routes = Router::new()
         .route("/jobs", get(api::system::list_jobs))
         .route("/jobs/{name}/run", post(api::system::trigger_job))
+        .route(
+            "/indexers",
+            get(api::system::list_indexers).post(api::system::create_indexer),
+        )
+        .route(
+            "/indexers/{id}",
+            put(api::system::update_indexer).delete(api::system::delete_indexer),
+        )
+        .route("/indexers/{id}/test", post(api::system::test_indexer))
+        .route("/storage/mounts", get(api::system::list_mounts))
+        .route("/storage/mounts/{name}/test", post(api::system::test_mount))
         .layer(axum_mw::from_fn(middleware::require_admin))
         .layer(axum_mw::from_fn_with_state(
             state.clone(),
             middleware::auth_middleware,
         ));
+
+    let system_routes = Router::new()
+        .merge(system_auth_routes)
+        .merge(system_admin_routes);
 
     // Build movies routes (authenticated)
     let movies_routes = Router::new()
