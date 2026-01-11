@@ -370,11 +370,32 @@ async fn main() {
             middleware::auth_middleware,
         ));
 
+    // Build movies routes (authenticated)
+    let movies_routes = Router::new()
+        .route(
+            "/",
+            get(api::movies::list_movies).post(api::movies::add_movie),
+        )
+        .route(
+            "/{id}",
+            get(api::movies::get_movie)
+                .put(api::movies::update_movie)
+                .delete(api::movies::delete_movie),
+        )
+        .route("/{id}/search", post(api::movies::search_releases))
+        .route("/{id}/download", post(api::movies::download_release))
+        .route("/{id}/refresh", post(api::movies::refresh_metadata))
+        .layer(axum_mw::from_fn_with_state(
+            state.clone(),
+            middleware::auth_middleware,
+        ));
+
     // Build main router with state
     let app = Router::new()
         .route("/health", get(health_check))
         .nest("/api/auth", auth_routes)
         .nest("/api/users", user_routes)
+        .nest("/api/movies", movies_routes)
         .nest("/api/system", system_routes)
         .with_state(state);
 
