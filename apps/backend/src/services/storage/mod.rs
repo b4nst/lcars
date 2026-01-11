@@ -329,13 +329,16 @@ impl StorageManager {
         }
 
         // Clean up empty directories in the download path
-        if download_path.is_dir() {
-            if let Err(e) = cleanup_empty_dirs(download_path).await {
-                tracing::warn!(
-                    path = ?download_path,
-                    error = %e,
-                    "Failed to clean up empty directories"
-                );
+        // Use async metadata check instead of blocking is_dir()
+        if let Ok(metadata) = tokio::fs::metadata(download_path).await {
+            if metadata.is_dir() {
+                if let Err(e) = cleanup_empty_dirs(download_path).await {
+                    tracing::warn!(
+                        path = ?download_path,
+                        error = %e,
+                        "Failed to clean up empty directories"
+                    );
+                }
             }
         }
 
@@ -373,7 +376,12 @@ pub async fn find_media_files(path: &Path, media_type: MediaType) -> Result<Vec<
         MediaType::Album | MediaType::Track => AUDIO_EXTENSIONS,
     };
 
-    if path.is_file() {
+    // Use async metadata check instead of blocking is_file()
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to get metadata for {:?}: {}", path, e)))?;
+
+    if metadata.is_file() {
         // Single file - check extension
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             if extensions.iter().any(|e| e.eq_ignore_ascii_case(ext)) {
@@ -399,7 +407,13 @@ pub async fn find_media_files(path: &Path, media_type: MediaType) -> Result<Vec<
         {
             let entry_path = entry.path();
 
-            if entry_path.is_dir() {
+            // Use the entry's file type from metadata instead of blocking is_dir()
+            let file_type = entry
+                .file_type()
+                .await
+                .map_err(|e| AppError::Internal(format!("Failed to get file type: {}", e)))?;
+
+            if file_type.is_dir() {
                 stack.push(entry_path);
             } else if let Some(ext) = entry_path.extension().and_then(|e| e.to_str()) {
                 if extensions.iter().any(|e| e.eq_ignore_ascii_case(ext)) {
