@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post, put},
     Extension, Json, Router,
 };
+use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -12,6 +13,7 @@ use crate::db::models::{Episode, MediaStatus, MediaType, ShowStatus, TvShow};
 use crate::error::{AppError, Result};
 use crate::middleware;
 use crate::services::indexer::{MediaSearchType, Release, SearchQuery as IndexerSearchQuery};
+use crate::services::tmdb::TmdbSeason;
 use crate::services::Claims;
 use crate::AppState;
 
@@ -374,80 +376,90 @@ pub async fn add_show(
 
     drop(db); // Release lock for async operations
 
-    // Fetch all seasons and insert episodes
-    let mut all_episodes: Vec<Episode> = Vec::new();
+    // Fetch all seasons concurrently for better performance
+    let season_futures: Vec<_> = tmdb_show
+        .seasons
+        .iter()
+        .filter(|s| !(s.season_number == 0 && s.episode_count == 0))
+        .map(|s| {
+            let tmdb_id = body.tmdb_id;
+            let season_number = s.season_number;
+            async move {
+                let result = tmdb_client.get_season(tmdb_id, season_number).await;
+                (season_number, result)
+            }
+        })
+        .collect();
 
-    for season_summary in &tmdb_show.seasons {
-        // Skip season 0 (specials) if it has no episodes
-        if season_summary.season_number == 0 && season_summary.episode_count == 0 {
-            continue;
-        }
+    let season_results: Vec<(i32, std::result::Result<TmdbSeason, AppError>)> =
+        join_all(season_futures).await;
 
-        // Fetch full season details
-        let season = match tmdb_client
-            .get_season(body.tmdb_id, season_summary.season_number)
-            .await
-        {
-            Ok(s) => s,
+    // Collect all episodes from successful season fetches
+    let mut episodes_to_insert = Vec::new();
+    for (season_number, result) in season_results {
+        match result {
+            Ok(season) => {
+                for ep in season.episodes {
+                    episodes_to_insert.push(ep);
+                }
+            }
             Err(e) => {
                 tracing::warn!(
                     show_id = body.tmdb_id,
-                    season = season_summary.season_number,
+                    season = season_number,
                     error = %e,
                     "Failed to fetch season details, skipping"
                 );
-                continue;
             }
-        };
-
-        let db = state.db.lock().await;
-
-        for ep in &season.episodes {
-            db.execute(
-                r#"
-                INSERT INTO episodes (
-                    show_id, tmdb_id, season_number, episode_number, title,
-                    overview, air_date, runtime_minutes, still_path, status, monitored
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'missing', ?10)
-                "#,
-                rusqlite::params![
-                    show_id,
-                    ep.id,
-                    ep.season_number,
-                    ep.episode_number,
-                    ep.name,
-                    ep.overview,
-                    ep.air_date,
-                    ep.runtime,
-                    ep.still_path,
-                    monitored,
-                ],
-            )?;
-
-            let episode_id = db.last_insert_rowid();
-            all_episodes.push(Episode {
-                id: episode_id,
-                show_id,
-                tmdb_id: Some(ep.id as i64),
-                season_number: ep.season_number,
-                episode_number: ep.episode_number,
-                title: Some(ep.name.clone()),
-                overview: ep.overview.clone(),
-                air_date: ep.air_date.clone(),
-                runtime_minutes: ep.runtime,
-                still_path: ep.still_path.clone(),
-                status: MediaStatus::Missing,
-                monitored,
-                file_path: None,
-                file_size: None,
-                created_at: String::new(),
-                updated_at: String::new(),
-            });
         }
     }
 
-    // Fetch the created show
+    // Insert all episodes in a single database lock acquisition
     let db = state.db.lock().await;
+    let mut all_episodes: Vec<Episode> = Vec::new();
+
+    for ep in &episodes_to_insert {
+        db.execute(
+            r#"
+            INSERT INTO episodes (
+                show_id, tmdb_id, season_number, episode_number, title,
+                overview, air_date, runtime_minutes, still_path, status, monitored
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'missing', ?10)
+            "#,
+            rusqlite::params![
+                show_id,
+                ep.id,
+                ep.season_number,
+                ep.episode_number,
+                ep.name,
+                ep.overview,
+                ep.air_date,
+                ep.runtime,
+                ep.still_path,
+                monitored,
+            ],
+        )?;
+
+        let episode_id = db.last_insert_rowid();
+        all_episodes.push(Episode {
+            id: episode_id,
+            show_id,
+            tmdb_id: Some(ep.id as i64),
+            season_number: ep.season_number,
+            episode_number: ep.episode_number,
+            title: Some(ep.name.clone()),
+            overview: ep.overview.clone(),
+            air_date: ep.air_date.clone(),
+            runtime_minutes: ep.runtime,
+            still_path: ep.still_path.clone(),
+            status: MediaStatus::Missing,
+            monitored,
+            file_path: None,
+            file_size: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+        });
+    }
     let show = db.query_row(
         r#"
         SELECT id, tmdb_id, imdb_id, title, original_title, year_start,
@@ -621,19 +633,23 @@ pub async fn delete_show(
 
         for path in file_paths {
             let path = std::path::Path::new(&path);
-            if path.exists() {
-                if let Err(e) = std::fs::remove_file(path) {
+            match std::fs::remove_file(path) {
+                Ok(_) => {
+                    tracing::info!(
+                        show_id = show_id,
+                        path = %path.display(),
+                        "Deleted episode file"
+                    );
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    // File already deleted, that's fine
+                }
+                Err(e) => {
                     tracing::warn!(
                         show_id = show_id,
                         path = %path.display(),
                         error = %e,
                         "Failed to delete episode file"
-                    );
-                } else {
-                    tracing::info!(
-                        show_id = show_id,
-                        path = %path.display(),
-                        "Deleted episode file"
                     );
                 }
             }
@@ -669,12 +685,12 @@ pub async fn refresh_metadata(
 
     let db = state.db.lock().await;
 
-    // Get show's TMDB ID
-    let (tmdb_id,): (i64,) = db
+    // Get show's TMDB ID and monitored status
+    let (tmdb_id, show_monitored): (i64, bool) = db
         .query_row(
-            "SELECT tmdb_id FROM tv_shows WHERE id = ?1",
+            "SELECT tmdb_id, monitored FROM tv_shows WHERE id = ?1",
             [show_id],
-            |row| Ok((row.get(0)?,)),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(|e| match e {
             rusqlite::Error::QueryReturnedNoRows => {
@@ -752,87 +768,99 @@ pub async fn refresh_metadata(
 
     drop(db);
 
-    // Check for new episodes in each season
-    let mut new_episode_count = 0;
+    // Fetch all seasons concurrently for better performance
+    let season_futures: Vec<_> = tmdb_show
+        .seasons
+        .iter()
+        .filter(|s| !(s.season_number == 0 && s.episode_count == 0))
+        .map(|s| {
+            let season_number = s.season_number;
+            async move {
+                let result = tmdb_client.get_season(tmdb_id as i32, season_number).await;
+                (season_number, result)
+            }
+        })
+        .collect();
 
-    for season_summary in &tmdb_show.seasons {
-        if season_summary.season_number == 0 && season_summary.episode_count == 0 {
-            continue;
-        }
+    let season_results: Vec<(i32, std::result::Result<TmdbSeason, AppError>)> =
+        join_all(season_futures).await;
 
-        let season = match tmdb_client
-            .get_season(tmdb_id as i32, season_summary.season_number)
-            .await
-        {
-            Ok(s) => s,
+    // Collect all episodes from successful season fetches
+    let mut all_tmdb_episodes = Vec::new();
+    for (season_number, result) in season_results {
+        match result {
+            Ok(season) => {
+                for ep in season.episodes {
+                    all_tmdb_episodes.push(ep);
+                }
+            }
             Err(e) => {
                 tracing::warn!(
                     show_id = show_id,
-                    season = season_summary.season_number,
+                    season = season_number,
                     error = %e,
                     "Failed to fetch season for refresh"
                 );
-                continue;
-            }
-        };
-
-        let db = state.db.lock().await;
-
-        for ep in &season.episodes {
-            let key = (ep.season_number, ep.episode_number);
-
-            if existing_episodes.contains(&key) {
-                // Update existing episode metadata
-                db.execute(
-                    r#"
-                    UPDATE episodes SET
-                        title = ?1,
-                        overview = ?2,
-                        air_date = ?3,
-                        runtime_minutes = ?4,
-                        still_path = ?5,
-                        updated_at = datetime('now')
-                    WHERE show_id = ?6 AND season_number = ?7 AND episode_number = ?8
-                    "#,
-                    rusqlite::params![
-                        ep.name,
-                        ep.overview,
-                        ep.air_date,
-                        ep.runtime,
-                        ep.still_path,
-                        show_id,
-                        ep.season_number,
-                        ep.episode_number,
-                    ],
-                )?;
-            } else {
-                // Insert new episode
-                db.execute(
-                    r#"
-                    INSERT INTO episodes (
-                        show_id, tmdb_id, season_number, episode_number, title,
-                        overview, air_date, runtime_minutes, still_path, status, monitored
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'missing', 1)
-                    "#,
-                    rusqlite::params![
-                        show_id,
-                        ep.id,
-                        ep.season_number,
-                        ep.episode_number,
-                        ep.name,
-                        ep.overview,
-                        ep.air_date,
-                        ep.runtime,
-                        ep.still_path,
-                    ],
-                )?;
-                new_episode_count += 1;
             }
         }
     }
 
-    // Fetch the updated show with episodes
+    // Update existing and insert new episodes in a single lock acquisition
     let db = state.db.lock().await;
+    let mut new_episode_count = 0;
+
+    for ep in &all_tmdb_episodes {
+        let key = (ep.season_number, ep.episode_number);
+
+        if existing_episodes.contains(&key) {
+            // Update existing episode metadata
+            db.execute(
+                r#"
+                UPDATE episodes SET
+                    title = ?1,
+                    overview = ?2,
+                    air_date = ?3,
+                    runtime_minutes = ?4,
+                    still_path = ?5,
+                    updated_at = datetime('now')
+                WHERE show_id = ?6 AND season_number = ?7 AND episode_number = ?8
+                "#,
+                rusqlite::params![
+                    ep.name,
+                    ep.overview,
+                    ep.air_date,
+                    ep.runtime,
+                    ep.still_path,
+                    show_id,
+                    ep.season_number,
+                    ep.episode_number,
+                ],
+            )?;
+        } else {
+            // Insert new episode using the show's monitored status
+            db.execute(
+                r#"
+                INSERT INTO episodes (
+                    show_id, tmdb_id, season_number, episode_number, title,
+                    overview, air_date, runtime_minutes, still_path, status, monitored
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'missing', ?10)
+                "#,
+                rusqlite::params![
+                    show_id,
+                    ep.id,
+                    ep.season_number,
+                    ep.episode_number,
+                    ep.name,
+                    ep.overview,
+                    ep.air_date,
+                    ep.runtime,
+                    ep.still_path,
+                    show_monitored,
+                ],
+            )?;
+            new_episode_count += 1;
+        }
+    }
 
     let show = db.query_row(
         r#"
