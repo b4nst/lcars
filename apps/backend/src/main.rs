@@ -19,7 +19,10 @@ mod middleware;
 mod services;
 
 use config::Config;
-use services::{AuthService, IndexerManager, MusicBrainzClient, TmdbClient, TorrentEngine};
+use services::{
+    AuthService, IndexerManager, JobContext, MusicBrainzClient, Scheduler, TmdbClient,
+    TorrentEngine,
+};
 
 /// Application state shared across handlers
 #[derive(Clone)]
@@ -31,6 +34,7 @@ pub struct AppState {
     musicbrainz_client: Option<Arc<MusicBrainzClient>>,
     indexer_manager: Arc<IndexerManager>,
     torrent_engine: Option<Arc<TorrentEngine>>,
+    scheduler: Option<Arc<Scheduler>>,
 }
 
 impl AppState {
@@ -57,6 +61,22 @@ impl AppState {
     /// Get a reference to the torrent engine, if initialized.
     pub fn torrent_engine(&self) -> Option<&TorrentEngine> {
         self.torrent_engine.as_deref()
+    }
+
+    /// Get a reference to the scheduler, if initialized.
+    pub fn scheduler(&self) -> Option<&Scheduler> {
+        self.scheduler.as_deref()
+    }
+
+    /// Create a job context for manual job execution.
+    pub fn job_context(&self) -> JobContext {
+        JobContext {
+            db: Arc::clone(&self.db),
+            tmdb_client: self.tmdb_client.clone(),
+            musicbrainz_client: self.musicbrainz_client.clone(),
+            indexer_manager: Arc::clone(&self.indexer_manager),
+            torrent_engine: self.torrent_engine.clone(),
+        }
     }
 }
 
@@ -267,15 +287,43 @@ async fn main() {
         }
     };
 
+    // Create job context for scheduler
+    let job_ctx = JobContext {
+        db: Arc::new(Mutex::new(conn)),
+        tmdb_client: tmdb_client.clone(),
+        musicbrainz_client: musicbrainz_client.clone(),
+        indexer_manager: indexer_manager.clone(),
+        torrent_engine: torrent_engine.clone(),
+    };
+
+    // Create and start scheduler
+    let scheduler = match Scheduler::new_shared(&config.scheduler, job_ctx.clone()).await {
+        Ok(sched) => {
+            if let Err(e) = sched.start().await {
+                tracing::error!("Failed to start scheduler: {}", e);
+                None
+            } else {
+                tracing::info!("Scheduler started with configured jobs");
+                Some(sched)
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to create scheduler: {}", e);
+            tracing::warn!("Background jobs will not run automatically");
+            None
+        }
+    };
+
     // Create application state
     let state = AppState {
         config: Arc::new(config.clone()),
-        db: Arc::new(Mutex::new(conn)),
+        db: job_ctx.db,
         auth_service: Arc::new(auth_service),
         tmdb_client,
         musicbrainz_client,
         indexer_manager,
         torrent_engine,
+        scheduler,
     };
 
     // Build auth routes (public)
@@ -312,11 +360,22 @@ async fn main() {
             middleware::auth_middleware,
         ));
 
+    // Build system routes (admin only)
+    let system_routes = Router::new()
+        .route("/jobs", get(api::system::list_jobs))
+        .route("/jobs/{name}/run", post(api::system::trigger_job))
+        .layer(axum_mw::from_fn(middleware::require_admin))
+        .layer(axum_mw::from_fn_with_state(
+            state.clone(),
+            middleware::auth_middleware,
+        ));
+
     // Build main router with state
     let app = Router::new()
         .route("/health", get(health_check))
         .nest("/api/auth", auth_routes)
         .nest("/api/users", user_routes)
+        .nest("/api/system", system_routes)
         .with_state(state);
 
     let addr = config.server_addr();
