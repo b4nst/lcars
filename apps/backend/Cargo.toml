@@ -28,6 +28,7 @@ sha2 = "0.10"
 hex = "0.4"
 urlencoding = "2.1"
 librqbit = { version = "8.0", default-features = false, features = ["rust-tls"] }
+tokio-cron-scheduler = "0.13"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
