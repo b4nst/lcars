@@ -1,5 +1,6 @@
 //! Application services for the LCARS backend.
 
+pub mod activity;
 pub mod auth;
 pub mod indexer;
 pub mod musicbrainz;
