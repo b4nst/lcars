@@ -78,15 +78,26 @@ pub async fn search_mb_artists(
     State(state): State<AppState>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<MbArtistResult>>> {
-    if query.q.trim().is_empty() {
+    let search_term = query.q.trim();
+    if search_term.is_empty() {
         return Err(AppError::BadRequest("Search query is required".to_string()));
+    }
+    if search_term.len() < 2 {
+        return Err(AppError::BadRequest(
+            "Search query must be at least 2 characters".to_string(),
+        ));
+    }
+    if search_term.len() > 200 {
+        return Err(AppError::BadRequest(
+            "Search query too long (max 200 characters)".to_string(),
+        ));
     }
 
     let mb_client = state
         .musicbrainz_client()
         .ok_or_else(|| AppError::Internal("MusicBrainz client not configured".to_string()))?;
 
-    let artists = mb_client.search_artists(&query.q).await?;
+    let artists = mb_client.search_artists(search_term).await?;
 
     let results: Vec<MbArtistResult> = artists
         .into_iter()
@@ -104,7 +115,7 @@ pub async fn search_mb_artists(
         .collect();
 
     tracing::debug!(
-        query = %query.q,
+        query = %search_term,
         results = results.len(),
         "MusicBrainz artist search"
     );
@@ -119,8 +130,19 @@ pub async fn search_mb_albums(
     State(state): State<AppState>,
     Query(query): Query<SearchAlbumsQuery>,
 ) -> Result<Json<Vec<MbAlbumResult>>> {
-    if query.q.trim().is_empty() {
+    let search_term = query.q.trim();
+    if search_term.is_empty() {
         return Err(AppError::BadRequest("Search query is required".to_string()));
+    }
+    if search_term.len() < 2 {
+        return Err(AppError::BadRequest(
+            "Search query must be at least 2 characters".to_string(),
+        ));
+    }
+    if search_term.len() > 200 {
+        return Err(AppError::BadRequest(
+            "Search query too long (max 200 characters)".to_string(),
+        ));
     }
 
     let mb_client = state
@@ -128,7 +150,7 @@ pub async fn search_mb_albums(
         .ok_or_else(|| AppError::Internal("MusicBrainz client not configured".to_string()))?;
 
     let albums = mb_client
-        .search_release_groups(&query.q, query.artist_mbid.as_deref())
+        .search_release_groups(search_term, query.artist_mbid.as_deref())
         .await?;
 
     let results: Vec<MbAlbumResult> = albums
@@ -154,7 +176,7 @@ pub async fn search_mb_albums(
         .collect();
 
     tracing::debug!(
-        query = %query.q,
+        query = %search_term,
         artist_mbid = ?query.artist_mbid,
         results = results.len(),
         "MusicBrainz album search"
