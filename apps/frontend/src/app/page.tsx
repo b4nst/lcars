@@ -1,24 +1,37 @@
+import { LcarsButton, LcarsPanel } from '@/components/lcars';
+
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">
-        <h1 className="text-4xl font-bold mb-4">LCARS</h1>
-        <p className="text-xl mb-8">Media Management System</p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="rounded-lg border border-gray-300 p-6">
-            <h2 className="text-lg font-semibold mb-2">Frontend</h2>
-            <p className="text-sm text-gray-600">Next.js 14 with Static Export</p>
-          </div>
-          <div className="rounded-lg border border-gray-300 p-6">
-            <h2 className="text-lg font-semibold mb-2">Backend</h2>
-            <p className="text-sm text-gray-600">Rust with Axum</p>
-          </div>
-          <div className="rounded-lg border border-gray-300 p-6">
-            <h2 className="text-lg font-semibold mb-2">Build System</h2>
-            <p className="text-sm text-gray-600">Moon Monorepo</p>
-          </div>
-        </div>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-lcars-text">Dashboard</h1>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <LcarsPanel title="Frontend" accentColor="orange">
+          <p className="text-lcars-text">Next.js 14 with Static Export</p>
+        </LcarsPanel>
+
+        <LcarsPanel title="Backend" accentColor="blue">
+          <p className="text-lcars-text">Rust with Axum</p>
+        </LcarsPanel>
+
+        <LcarsPanel title="Build System" accentColor="purple">
+          <p className="text-lcars-text">Moon Monorepo</p>
+        </LcarsPanel>
       </div>
-    </main>
-  )
+
+      <div className="flex gap-4">
+        <LcarsButton variant="orange">Orange</LcarsButton>
+        <LcarsButton variant="yellow">Yellow</LcarsButton>
+        <LcarsButton variant="blue">Blue</LcarsButton>
+        <LcarsButton variant="purple">Purple</LcarsButton>
+        <LcarsButton variant="red">Red</LcarsButton>
+      </div>
+
+      <div className="flex gap-4">
+        <LcarsButton size="sm">Small</LcarsButton>
+        <LcarsButton size="md">Medium</LcarsButton>
+        <LcarsButton size="lg">Large</LcarsButton>
+      </div>
+    </div>
+  );
 }
