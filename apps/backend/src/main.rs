@@ -396,6 +396,9 @@ async fn main() {
     // Build music routes (authenticated)
     let music_routes = api::music::router(state.clone());
 
+    // Build downloads routes (authenticated)
+    let downloads_routes = api::downloads::router(state.clone());
+
     // Build search routes (authenticated)
     let search_routes = Router::new()
         .route("/musicbrainz/artists", get(api::search::search_mb_artists))
@@ -413,8 +416,10 @@ async fn main() {
         .nest("/api/movies", movies_routes)
         .nest("/api/tv", tv_routes)
         .nest("/api/music", music_routes)
+        .nest("/api/downloads", downloads_routes)
         .nest("/api/search", search_routes)
         .nest("/api/system", system_routes)
+        .route("/api/ws", get(api::ws::ws_handler))
         .with_state(state);
 
     let addr = config.server_addr();
