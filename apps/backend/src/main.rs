@@ -370,6 +370,8 @@ async fn main() {
     let search_routes = Router::new()
         .route("/musicbrainz/artists", get(api::search::search_mb_artists))
         .route("/musicbrainz/albums", get(api::search::search_mb_albums))
+        .route("/tmdb/movies", get(api::search::search_tmdb_movies))
+        .route("/tmdb/tv", get(api::search::search_tmdb_tv))
         .layer(axum_mw::from_fn_with_state(
             state.clone(),
             middleware::auth_middleware,

@@ -1,12 +1,32 @@
 'use client';
 
+import { useAuthStore } from '@/lib/stores/auth';
 import { LcarsSidebar } from './sidebar';
+import { LcarsLoginForm } from './login-form';
 
 interface LcarsFrameProps {
   children: React.ReactNode;
 }
 
 export function LcarsFrame({ children }: LcarsFrameProps) {
+  const { user, isLoading } = useAuthStore();
+
+  // Show loading state while checking auth
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-lcars-black flex items-center justify-center">
+        <div className="text-lcars-orange text-xl animate-pulse">
+          Initializing...
+        </div>
+      </div>
+    );
+  }
+
+  // Show login form if not authenticated
+  if (!user) {
+    return <LcarsLoginForm />;
+  }
+
   return (
     <div className="min-h-screen bg-lcars-black flex flex-col">
       {/* Skip to content link for accessibility */}

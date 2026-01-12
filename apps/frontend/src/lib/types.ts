@@ -186,12 +186,12 @@ export interface SystemStatus {
     queued: number;
     seeding: number;
   };
-  storage: {
+  storage?: {
     mounts: MountStatus[];
   };
   vpn: {
     enabled: boolean;
-    interface: string;
+    interface?: string;
     connected: boolean;
     public_ip?: string;
   };
