@@ -12,6 +12,11 @@ import { cn } from '@/lib/utils';
 import { mediaStatusColors } from '@/lib/constants';
 import type { AlbumStatus } from '@/lib/types';
 
+// Required for static export - pages will be client-rendered
+export function generateStaticParams() {
+  return [];
+}
+
 interface ArtistDetailPageProps {
   params: {
     id: string;

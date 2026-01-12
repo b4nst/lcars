@@ -12,6 +12,11 @@ import { cn, formatBytes } from '@/lib/utils';
 import { mediaStatusColors } from '@/lib/constants';
 import type { Release, Episode } from '@/lib/types';
 
+// Required for static export - pages will be client-rendered
+export function generateStaticParams() {
+  return [];
+}
+
 interface TvShowDetailPageProps {
   params: {
     id: string;
