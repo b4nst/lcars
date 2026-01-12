@@ -1,0 +1,40 @@
+version: '3.8'
+
+# Development docker-compose overlay
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# WARNING: This configuration uses insecure default credentials.
+# Never use these values in production!
+
+services:
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    volumes:
+      # Mount source for development (requires rebuild on change)
+      - ./apps/backend/src:/app/src:ro
+      # Persist data between runs
+      - ./data:/data
+      - ./downloads:/downloads
+      - ./media:/media
+    environment:
+      - RUST_LOG=backend=debug,tower_http=debug,axum=info,warn
+      - LCARS_SERVER__JWT_SECRET=dev-secret-not-for-production
+      - LCARS_ADMIN_PASSWORD=admin
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+    volumes:
+      # Mount source for development
+      - ./apps/frontend/src:/app/src:ro
+      - ./apps/frontend/public:/app/public:ro
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api
+    ports:
+      - "3000:3000"
