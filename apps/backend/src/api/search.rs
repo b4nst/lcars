@@ -10,6 +10,64 @@ use crate::error::{AppError, Result};
 use crate::AppState;
 
 // =============================================================================
+// TMDB Search Types
+// =============================================================================
+
+/// Query parameters for TMDB movie search.
+#[derive(Debug, Deserialize)]
+pub struct TmdbMovieSearchQuery {
+    /// Search query string.
+    pub q: String,
+    /// Optional year filter.
+    pub year: Option<i32>,
+}
+
+/// Query parameters for TMDB TV search.
+#[derive(Debug, Deserialize)]
+pub struct TmdbTvSearchQuery {
+    /// Search query string.
+    pub q: String,
+}
+
+/// TMDB movie search result.
+#[derive(Debug, Serialize)]
+pub struct TmdbMovieResult {
+    pub id: i32,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overview: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub poster_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backdrop_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vote_average: Option<f64>,
+}
+
+/// TMDB TV show search result.
+#[derive(Debug, Serialize)]
+pub struct TmdbTvResult {
+    pub id: i32,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overview: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub poster_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backdrop_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_air_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vote_average: Option<f64>,
+}
+
+// =============================================================================
 // Request/Response Types
 // =============================================================================
 
@@ -180,6 +238,109 @@ pub async fn search_mb_albums(
         artist_mbid = ?query.artist_mbid,
         results = results.len(),
         "MusicBrainz album search"
+    );
+
+    Ok(Json(results))
+}
+
+/// GET /api/search/tmdb/movies
+///
+/// Searches TMDB for movies.
+pub async fn search_tmdb_movies(
+    State(state): State<AppState>,
+    Query(query): Query<TmdbMovieSearchQuery>,
+) -> Result<Json<Vec<TmdbMovieResult>>> {
+    let search_term = query.q.trim();
+    if search_term.is_empty() {
+        return Err(AppError::BadRequest("Search query is required".to_string()));
+    }
+    if search_term.len() < 2 {
+        return Err(AppError::BadRequest(
+            "Search query must be at least 2 characters".to_string(),
+        ));
+    }
+    if search_term.len() > 200 {
+        return Err(AppError::BadRequest(
+            "Search query too long (max 200 characters)".to_string(),
+        ));
+    }
+
+    let tmdb_client = state
+        .tmdb_client()
+        .ok_or_else(|| AppError::Internal("TMDB client not configured".to_string()))?;
+
+    let movies = tmdb_client.search_movies(search_term, query.year).await?;
+
+    let results: Vec<TmdbMovieResult> = movies
+        .into_iter()
+        .map(|m| TmdbMovieResult {
+            id: m.id,
+            title: m.title,
+            original_title: Some(m.original_title),
+            overview: m.overview,
+            poster_path: m.poster_path,
+            backdrop_path: m.backdrop_path,
+            release_date: m.release_date,
+            vote_average: Some(m.vote_average),
+        })
+        .collect();
+
+    tracing::debug!(
+        query = %search_term,
+        year = ?query.year,
+        results = results.len(),
+        "TMDB movie search"
+    );
+
+    Ok(Json(results))
+}
+
+/// GET /api/search/tmdb/tv
+///
+/// Searches TMDB for TV shows.
+pub async fn search_tmdb_tv(
+    State(state): State<AppState>,
+    Query(query): Query<TmdbTvSearchQuery>,
+) -> Result<Json<Vec<TmdbTvResult>>> {
+    let search_term = query.q.trim();
+    if search_term.is_empty() {
+        return Err(AppError::BadRequest("Search query is required".to_string()));
+    }
+    if search_term.len() < 2 {
+        return Err(AppError::BadRequest(
+            "Search query must be at least 2 characters".to_string(),
+        ));
+    }
+    if search_term.len() > 200 {
+        return Err(AppError::BadRequest(
+            "Search query too long (max 200 characters)".to_string(),
+        ));
+    }
+
+    let tmdb_client = state
+        .tmdb_client()
+        .ok_or_else(|| AppError::Internal("TMDB client not configured".to_string()))?;
+
+    let shows = tmdb_client.search_tv(search_term).await?;
+
+    let results: Vec<TmdbTvResult> = shows
+        .into_iter()
+        .map(|s| TmdbTvResult {
+            id: s.id,
+            name: s.name,
+            original_name: Some(s.original_name),
+            overview: s.overview,
+            poster_path: s.poster_path,
+            backdrop_path: s.backdrop_path,
+            first_air_date: s.first_air_date,
+            vote_average: Some(s.vote_average),
+        })
+        .collect();
+
+    tracing::debug!(
+        query = %search_term,
+        results = results.len(),
+        "TMDB TV search"
     );
 
     Ok(Json(results))

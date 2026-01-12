@@ -128,23 +128,25 @@ export default function Dashboard() {
             </div>
           </LcarsPanel>
 
-          <LcarsPanel title="Storage" accentColor="purple">
-            <div className="space-y-2 text-sm">
-              {status.storage.mounts.map((mount) => (
-                <div key={mount.name} className="flex justify-between">
-                  <span className="text-lcars-text-dim">{mount.name}:</span>
-                  <span
-                    className={cn(
-                      'uppercase',
-                      mount.available ? 'text-status-available' : 'text-status-missing'
-                    )}
-                  >
-                    {mount.available ? 'Online' : 'Offline'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </LcarsPanel>
+          {status.storage?.mounts && status.storage.mounts.length > 0 && (
+            <LcarsPanel title="Storage" accentColor="purple">
+              <div className="space-y-2 text-sm">
+                {status.storage.mounts.map((mount) => (
+                  <div key={mount.name} className="flex justify-between">
+                    <span className="text-lcars-text-dim">{mount.name}:</span>
+                    <span
+                      className={cn(
+                        'uppercase',
+                        mount.available ? 'text-status-available' : 'text-status-missing'
+                      )}
+                    >
+                      {mount.available ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </LcarsPanel>
+          )}
         </div>
       )}
 

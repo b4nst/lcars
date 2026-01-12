@@ -23,11 +23,33 @@ FROM nginx:alpine
 # Copy static export to nginx
 COPY --from=builder /app/out /usr/share/nginx/html
 
-# Copy nginx config for SPA routing
+# Copy nginx config for SPA routing with dynamic route fallbacks
 RUN echo 'server { \
     listen 3000; \
     root /usr/share/nginx/html; \
     index index.html; \
+    \
+    # Handle movie detail pages - /movies/{id} falls back to /movies/_/index.html \
+    location ~ ^/movies/[^/]+/?$ { \
+        try_files $uri $uri/ /movies/_/index.html; \
+    } \
+    \
+    # Handle TV show detail pages - /tv/{id} falls back to /tv/_/index.html \
+    location ~ ^/tv/[^/]+/?$ { \
+        try_files $uri $uri/ /tv/_/index.html; \
+    } \
+    \
+    # Handle album detail pages - /music/albums/{id} falls back to /music/albums/_/index.html \
+    location ~ ^/music/albums/[^/]+/?$ { \
+        try_files $uri $uri/ /music/albums/_/index.html; \
+    } \
+    \
+    # Handle artist detail pages - /music/artists/{id} falls back to /music/artists/_/index.html \
+    location ~ ^/music/artists/[^/]+/?$ { \
+        try_files $uri $uri/ /music/artists/_/index.html; \
+    } \
+    \
+    # Default SPA fallback for other routes \
     location / { \
         try_files $uri $uri/ /index.html; \
     } \
