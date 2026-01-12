@@ -12,6 +12,11 @@ import { TrackList } from '@/components/track-list';
 import { cn, formatBytes } from '@/lib/utils';
 import type { Release } from '@/lib/types';
 
+// Required for static export - pages will be client-rendered
+export function generateStaticParams() {
+  return [];
+}
+
 interface AlbumDetailPageProps {
   params: {
     id: string;

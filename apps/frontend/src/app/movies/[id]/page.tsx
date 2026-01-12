@@ -12,6 +12,11 @@ import { cn, formatBytes } from '@/lib/utils';
 import { mediaStatusColors } from '@/lib/constants';
 import type { Release } from '@/lib/types';
 
+// Required for static export - pages will be client-rendered
+export function generateStaticParams() {
+  return [];
+}
+
 interface MovieDetailPageProps {
   params: {
     id: string;
