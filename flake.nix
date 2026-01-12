@@ -49,8 +49,9 @@
             clippy
             rust-analyzer
 
-            # Bun for frontend
+            # Frontend tooling
             bun
+            nodejs  # Required by Next.js build
 
             # Other development tools
             git
