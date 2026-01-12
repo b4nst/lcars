@@ -590,6 +590,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    #[allow(dead_code)]
     fn test_config() -> TorrentConfig {
         TorrentConfig {
             download_dir: PathBuf::from("/tmp/lcars-test-downloads"),

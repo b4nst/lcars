@@ -115,7 +115,7 @@ async fn test_list_artists_with_monitored_filter() {
     assert!(
         items
             .iter()
-            .all(|item| item["monitored"].as_bool().unwrap() == true),
+            .all(|item| item["monitored"].as_bool().unwrap()),
         "All artists should be monitored"
     );
 
@@ -134,7 +134,7 @@ async fn test_list_artists_with_monitored_filter() {
     assert!(
         items
             .iter()
-            .all(|item| item["monitored"].as_bool().unwrap() == false),
+            .all(|item| !item["monitored"].as_bool().unwrap()),
         "All artists should be unmonitored"
     );
 }
@@ -178,7 +178,7 @@ async fn test_list_artists_pagination() {
     response.assert_status_ok();
     let body: serde_json::Value = response.json();
     assert_eq!(body["page"], 2);
-    assert!(body["items"].as_array().unwrap().len() > 0);
+    assert!(!body["items"].as_array().unwrap().is_empty());
 }
 
 // =============================================================================
