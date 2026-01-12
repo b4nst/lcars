@@ -38,7 +38,7 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: ci
+    # Run in parallel with ci job, not after it
 
     steps:
       - uses: actions/checkout@v4
