@@ -559,5 +559,13 @@ export class ApiClient {
   }
 }
 
+// Get API base URL from environment or default to relative /api
+const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  return '/api';
+};
+
 // Export singleton instance
-export const api = new ApiClient();
+export const api = new ApiClient(getApiBaseUrl());

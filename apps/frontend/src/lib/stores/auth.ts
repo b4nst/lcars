@@ -27,7 +27,7 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       token: null,
-      isLoading: false,
+      isLoading: true, // Start as loading until rehydration completes
 
       login: async (username: string, password: string) => {
         set({ isLoading: true });
@@ -79,6 +79,14 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         user: state.user,
       }),
+      onRehydrateStorage: () => (state) => {
+        // When store rehydrates from localStorage, set the token on the API client
+        if (state?.token) {
+          api.setToken(state.token);
+        }
+        // Mark loading as complete after rehydration
+        useAuthStore.setState({ isLoading: false });
+      },
     }
   )
 );

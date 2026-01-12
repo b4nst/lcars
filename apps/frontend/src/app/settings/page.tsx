@@ -139,13 +139,14 @@ export default function SettingsPage() {
       </section>
 
       {/* Storage Mounts */}
-      <section>
-        <h2 className="mb-4 flex items-center gap-2 text-xl font-bold uppercase tracking-wider text-lcars-yellow">
-          <HardDrive className="h-6 w-6" />
-          Storage Mounts
-        </h2>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {status.storage.mounts.map((mount) => (
+      {status.storage?.mounts && status.storage.mounts.length > 0 && (
+        <section>
+          <h2 className="mb-4 flex items-center gap-2 text-xl font-bold uppercase tracking-wider text-lcars-yellow">
+            <HardDrive className="h-6 w-6" />
+            Storage Mounts
+          </h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {status.storage.mounts.map((mount) => (
             <LcarsPanel
               key={mount.name}
               title={mount.name}
@@ -201,9 +202,10 @@ export default function SettingsPage() {
                 )}
               </div>
             </LcarsPanel>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Indexers Section - Placeholder */}
       <section>
