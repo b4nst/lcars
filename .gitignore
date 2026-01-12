@@ -1,7 +1,8 @@
 # Rust
 target/
 **/*.rs.bk
-Cargo.lock
+# Include Cargo.lock for backend binary (reproducible builds)
+!apps/backend/Cargo.lock
 
 # Node.js / Bun
 node_modules/
