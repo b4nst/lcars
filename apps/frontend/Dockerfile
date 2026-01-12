@@ -14,39 +14,32 @@ RUN bun install --frozen-lockfile
 # Copy source files
 COPY . .
 
-# Build the application
+# Build the static export
 RUN bun run build
 
-# Runtime stage
-FROM node:20-alpine AS runner
+# Runtime stage - serve static files with nginx
+FROM nginx:alpine
 
-WORKDIR /app
+# Copy static export to nginx
+COPY --from=builder /app/out /usr/share/nginx/html
 
-# Install wget for health checks and create non-root user
-RUN apk add --no-cache wget && \
-    addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+# Copy nginx config for SPA routing
+RUN echo 'server { \
+    listen 3000; \
+    root /usr/share/nginx/html; \
+    index index.html; \
+    location / { \
+        try_files $uri $uri/ /index.html; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
 
-# Copy standalone build
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+# Install wget for health checks
+RUN apk add --no-cache wget
 
-# Set ownership
-RUN chown -R nextjs:nodejs /app
-
-USER nextjs
-
-# Expose port
 EXPOSE 3000
-
-# Environment variables
-ENV NODE_ENV=production \
-    PORT=3000 \
-    HOSTNAME="0.0.0.0"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
-CMD ["node", "server.js"]
+CMD ["nginx", "-g", "daemon off;"]
