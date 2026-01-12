@@ -50,7 +50,7 @@ pub enum Quality {
 
 impl Quality {
     /// Parse quality from string representation.
-    pub fn from_str(s: &str) -> Quality {
+    pub fn parse(s: &str) -> Quality {
         match s.to_lowercase().as_str() {
             "2160p" => Quality::P2160,
             "1080p" => Quality::P1080,
@@ -88,7 +88,7 @@ pub enum Source {
 
 impl Source {
     /// Parse source from string representation.
-    pub fn from_str(s: &str) -> Source {
+    pub fn parse(s: &str) -> Source {
         match s.to_uppercase().as_str() {
             "BLURAY" | "BLU-RAY" | "BDRIP" | "BRRIP" => Source::BluRay,
             "WEB-DL" | "WEBDL" | "WEB" => Source::WebDl,
@@ -133,7 +133,7 @@ pub enum AudioFormat {
 
 impl AudioFormat {
     /// Parse audio format from string representation.
-    pub fn from_str(s: &str) -> AudioFormat {
+    pub fn parse(s: &str) -> AudioFormat {
         match s.to_uppercase().as_str() {
             "FLAC" => AudioFormat::Flac,
             "MP3" => AudioFormat::Mp3,
@@ -169,7 +169,7 @@ pub enum MusicSource {
 
 impl MusicSource {
     /// Parse music source from string representation.
-    pub fn from_str(s: &str) -> MusicSource {
+    pub fn parse(s: &str) -> MusicSource {
         match s.to_uppercase().as_str() {
             "CD" | "SACD" | "DVD-A" => MusicSource::Cd,
             "WEB" => MusicSource::Web,
@@ -293,12 +293,12 @@ pub fn parse_release_name(name: &str) -> ParsedRelease {
 
     // Extract quality
     if let Some(caps) = QUALITY_RE.captures(name) {
-        result.quality = Quality::from_str(&caps[1]);
+        result.quality = Quality::parse(&caps[1]);
     }
 
     // Extract source
     if let Some(caps) = SOURCE_RE.captures(name) {
-        result.source = Source::from_str(&caps[1]);
+        result.source = Source::parse(&caps[1]);
     }
 
     // Extract codec
@@ -379,7 +379,7 @@ pub fn parse_music_release(name: &str) -> ParsedRelease {
 
     // Extract audio format
     if let Some(caps) = AUDIO_FORMAT_RE.captures(name) {
-        result.audio_format = Some(AudioFormat::from_str(&caps[1]));
+        result.audio_format = Some(AudioFormat::parse(&caps[1]));
     }
 
     // Extract bitrate
@@ -409,7 +409,7 @@ pub fn parse_music_release(name: &str) -> ParsedRelease {
 
     // Extract music source
     if let Some(caps) = MUSIC_SOURCE_RE.captures(name) {
-        result.music_source = Some(MusicSource::from_str(&caps[1]));
+        result.music_source = Some(MusicSource::parse(&caps[1]));
     }
 
     // Extract group (if present)
