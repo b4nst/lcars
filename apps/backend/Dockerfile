@@ -8,23 +8,15 @@ RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig
 
 WORKDIR /app
 
-# Copy manifests first for better caching
+# Copy everything and build
 COPY Cargo.toml Cargo.lock ./
-
-# Create dummy src to build dependencies
-RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "" > src/lib.rs
-
-# Build dependencies only (cached layer)
-RUN cargo build --release && rm -rf src target/release/deps/backend*
-
-# Copy actual source code
 COPY src ./src
 
 # Build the application
 RUN cargo build --release
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3.21
 
 # Install runtime dependencies
 RUN apk add --no-cache \
