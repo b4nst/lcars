@@ -178,29 +178,33 @@ pub struct ArtistWithAlbums {
 // =============================================================================
 
 /// Create the music router with all routes.
+///
+/// Note: Path parameters use `:id` syntax instead of `{id}` for compatibility
+/// with axum-test. Both syntaxes are valid in Axum 0.7, but axum-test requires
+/// the colon syntax for proper route matching in test environments.
 pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         // Artists
         .route("/artists", get(list_artists).post(add_artist))
         .route(
-            "/artists/{id}",
+            "/artists/:id",
             get(get_artist).put(update_artist).delete(delete_artist),
         )
-        .route("/artists/{id}/refresh", post(refresh_artist))
+        .route("/artists/:id/refresh", post(refresh_artist))
         // Albums
         .route("/albums", get(list_albums))
         .route(
-            "/albums/{id}",
+            "/albums/:id",
             get(get_album).put(update_album).delete(delete_album),
         )
-        .route("/albums/{id}/search", post(search_album_releases))
-        .route("/albums/{id}/download", post(download_album))
-        .route("/albums/{id}/refresh", post(refresh_album))
+        .route("/albums/:id/search", post(search_album_releases))
+        .route("/albums/:id/download", post(download_album))
+        .route("/albums/:id/refresh", post(refresh_album))
         // Tracks
         .route("/tracks", get(list_tracks))
-        .route("/tracks/{id}", put(update_track))
-        .route("/tracks/{id}/search", post(search_track_releases))
-        .route("/tracks/{id}/download", post(download_track))
+        .route("/tracks/:id", put(update_track))
+        .route("/tracks/:id/search", post(search_track_releases))
+        .route("/tracks/:id/download", post(download_track))
         .layer(axum::middleware::from_fn_with_state(
             state,
             middleware::auth_middleware,
