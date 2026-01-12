@@ -48,6 +48,22 @@ pub enum AppError {
     /// Internal server error
     #[error("Internal error: {0}")]
     Internal(String),
+
+    /// External service unavailable (TMDB, MusicBrainz, indexers)
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
+
+    /// Rate limited by external service
+    #[error("Rate limited: retry after {0} seconds")]
+    RateLimited(u32),
+
+    /// Request timeout
+    #[error("Request timeout: {0}")]
+    Timeout(String),
+
+    /// Conflict (e.g., duplicate resource)
+    #[error("Conflict: {0}")]
+    Conflict(String),
 }
 
 /// JSON error response body
@@ -106,6 +122,31 @@ impl IntoResponse for AppError {
                     None, // Don't expose internal errors to clients
                 )
             }
+            AppError::ServiceUnavailable(service) => {
+                tracing::warn!("Service unavailable: {}", service);
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "service_unavailable",
+                    Some(format!("{} is temporarily unavailable", service)),
+                )
+            }
+            AppError::RateLimited(retry_after) => {
+                tracing::warn!("Rate limited, retry after {} seconds", retry_after);
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "rate_limited",
+                    Some(format!("Rate limited. Retry after {} seconds", retry_after)),
+                )
+            }
+            AppError::Timeout(operation) => {
+                tracing::warn!("Timeout during: {}", operation);
+                (
+                    StatusCode::GATEWAY_TIMEOUT,
+                    "timeout",
+                    Some(format!("{} timed out", operation)),
+                )
+            }
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", Some(msg.clone())),
         };
 
         let body = ErrorResponse {
@@ -150,5 +191,33 @@ mod tests {
         let error = AppError::Forbidden;
         let response = error.into_response();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn test_service_unavailable_status() {
+        let error = AppError::ServiceUnavailable("TMDB".to_string());
+        let response = error.into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn test_rate_limited_status() {
+        let error = AppError::RateLimited(60);
+        let response = error.into_response();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[test]
+    fn test_timeout_status() {
+        let error = AppError::Timeout("metadata lookup".to_string());
+        let response = error.into_response();
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+    }
+
+    #[test]
+    fn test_conflict_status() {
+        let error = AppError::Conflict("Movie already exists".to_string());
+        let response = error.into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
     }
 }

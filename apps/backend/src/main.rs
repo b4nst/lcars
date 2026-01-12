@@ -1,109 +1,23 @@
 use axum::{
+    http::{header, Method},
     middleware as axum_mw,
-    response::Json,
     routing::{get, post, put},
     Router,
 };
 use rand::Rng;
 use rusqlite::Connection;
-use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-mod api;
-mod config;
-mod db;
-mod error;
-mod middleware;
-mod services;
+use backend::{api, config, db, middleware, services, AppState};
 
 use config::Config;
 use services::{
     AuthService, IndexerManager, JobContext, MusicBrainzClient, Scheduler, StorageManager,
     TmdbClient, TorrentEngine,
 };
-
-/// Application state shared across handlers
-#[derive(Clone)]
-pub struct AppState {
-    pub config: Arc<Config>,
-    pub db: Arc<Mutex<Connection>>,
-    auth_service: Arc<AuthService>,
-    tmdb_client: Option<Arc<TmdbClient>>,
-    musicbrainz_client: Option<Arc<MusicBrainzClient>>,
-    indexer_manager: Arc<IndexerManager>,
-    torrent_engine: Option<Arc<TorrentEngine>>,
-    scheduler: Option<Arc<Scheduler>>,
-    start_time: std::time::Instant,
-    storage_manager: Option<Arc<StorageManager>>,
-}
-
-impl AppState {
-    /// Get a reference to the auth service.
-    pub fn auth_service(&self) -> &AuthService {
-        &self.auth_service
-    }
-
-    /// Get a reference to the TMDB client, if configured.
-    pub fn tmdb_client(&self) -> Option<&TmdbClient> {
-        self.tmdb_client.as_deref()
-    }
-
-    /// Get a reference to the MusicBrainz client, if configured.
-    pub fn musicbrainz_client(&self) -> Option<&MusicBrainzClient> {
-        self.musicbrainz_client.as_deref()
-    }
-
-    /// Get a reference to the indexer manager.
-    pub fn indexer_manager(&self) -> &IndexerManager {
-        &self.indexer_manager
-    }
-
-    /// Get a reference to the torrent engine, if initialized.
-    pub fn torrent_engine(&self) -> Option<&TorrentEngine> {
-        self.torrent_engine.as_deref()
-    }
-
-    /// Get a reference to the scheduler, if initialized.
-    pub fn scheduler(&self) -> Option<&Scheduler> {
-        self.scheduler.as_deref()
-    }
-
-    /// Get the start time of the application.
-    pub fn start_time(&self) -> std::time::Instant {
-        self.start_time
-    }
-
-    /// Get a reference to the storage manager, if initialized.
-    pub fn storage_manager(&self) -> Option<&StorageManager> {
-        self.storage_manager.as_deref()
-    }
-
-    /// Create a job context for manual job execution.
-    pub fn job_context(&self) -> JobContext {
-        JobContext {
-            db: Arc::clone(&self.db),
-            tmdb_client: self.tmdb_client.clone(),
-            musicbrainz_client: self.musicbrainz_client.clone(),
-            indexer_manager: Arc::clone(&self.indexer_manager),
-            torrent_engine: self.torrent_engine.clone(),
-        }
-    }
-}
-
-#[derive(Serialize)]
-struct ApiResponse {
-    message: String,
-    version: String,
-}
-
-async fn health_check() -> Json<ApiResponse> {
-    Json(ApiResponse {
-        message: "LCARS Backend is running".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    })
-}
 
 fn init_tracing() {
     // Initialize tracing with env-filter
@@ -461,9 +375,23 @@ async fn main() {
             middleware::auth_middleware,
         ));
 
+    // Configure CORS
+    // In production, restrict origins to the frontend URL
+    let cors = CorsLayer::new()
+        .allow_origin(Any) // TODO: Configure allowed origins from config
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT])
+        .max_age(std::time::Duration::from_secs(3600));
+
     // Build main router with state
     let app = Router::new()
-        .route("/health", get(health_check))
+        .route("/health", get(backend::health_check))
         .nest("/api/auth", auth_routes)
         .nest("/api/users", user_routes)
         .nest("/api/movies", movies_routes)
@@ -473,6 +401,7 @@ async fn main() {
         .nest("/api/search", search_routes)
         .nest("/api/system", system_routes)
         .route("/api/ws", get(api::ws::ws_handler))
+        .layer(cors)
         .with_state(state);
 
     let addr = config.server_addr();

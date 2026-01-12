@@ -3,6 +3,14 @@ name = "backend"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "backend"
+path = "src/lib.rs"
+
+[[bin]]
+name = "backend"
+path = "src/main.rs"
+
 [dependencies]
 tokio = { version = "1.35", features = ["full"] }
 axum = { version = "0.7", features = ["ws"] }
@@ -29,9 +37,13 @@ hex = "0.4"
 urlencoding = "2.1"
 librqbit = { version = "8.0", default-features = false, features = ["rust-tls"] }
 tokio-cron-scheduler = "0.13"
+tower-http = { version = "0.5", features = ["cors"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3.10"
+axum-test = "16"
+tokio-test = "0.4"
+tower = { version = "0.4", features = ["util"] }

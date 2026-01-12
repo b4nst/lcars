@@ -70,3 +70,18 @@ tasks:
     inputs:
       - '@group(sources)'
       - '@group(cargo)'
+
+  test-integration:
+    command: 'cargo'
+    args:
+      - 'test'
+      - '--test'
+      - '*_test*'
+      - '--test'
+      - '*_tests'
+      - '--'
+      - '--test-threads=1'
+    inputs:
+      - '@group(sources)'
+      - '@group(cargo)'
+      - 'tests/**/*'

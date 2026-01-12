@@ -17,7 +17,7 @@ import type {
   ActivityEvent,
 } from './types';
 
-// Custom error class for API errors
+// Custom error classes for API errors
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -35,6 +35,62 @@ export class AuthError extends ApiError {
     this.name = 'AuthError';
   }
 }
+
+export class NetworkError extends ApiError {
+  constructor(message: string = 'Network error') {
+    super(message, 0, 'NETWORK_ERROR');
+    this.name = 'NetworkError';
+  }
+}
+
+export class TimeoutError extends ApiError {
+  constructor(message: string = 'Request timed out') {
+    super(message, 0, 'TIMEOUT_ERROR');
+    this.name = 'TimeoutError';
+  }
+}
+
+export class RateLimitError extends ApiError {
+  constructor(
+    message: string = 'Rate limited',
+    public readonly retryAfter?: number
+  ) {
+    super(message, 429, 'RATE_LIMIT_ERROR');
+    this.name = 'RateLimitError';
+  }
+}
+
+export class ServiceUnavailableError extends ApiError {
+  constructor(message: string = 'Service unavailable') {
+    super(message, 503, 'SERVICE_UNAVAILABLE');
+    this.name = 'ServiceUnavailableError';
+  }
+}
+
+// Request configuration
+interface RequestConfig {
+  retries?: number;
+  retryDelay?: number;
+  timeout?: number;
+}
+
+const DEFAULT_CONFIG: Required<RequestConfig> = {
+  retries: 3,
+  retryDelay: 1000,
+  timeout: 30000,
+};
+
+// Helper to delay for retry
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Check if error is retryable
+const isRetryableError = (error: unknown): boolean => {
+  if (error instanceof NetworkError) return true;
+  if (error instanceof TimeoutError) return true;
+  if (error instanceof ServiceUnavailableError) return true;
+  if (error instanceof ApiError && error.status >= 500) return true;
+  return false;
+};
 
 export class ApiClient {
   private baseUrl: string;
@@ -54,8 +110,10 @@ export class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit & { signal?: AbortSignal } = {}
+    options: RequestInit & { signal?: AbortSignal } = {},
+    config: RequestConfig = {}
   ): Promise<T> {
+    const { retries, retryDelay, timeout } = { ...DEFAULT_CONFIG, ...config };
     const url = `${this.baseUrl}${endpoint}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -65,33 +123,108 @@ export class ApiClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(url, {
-      ...options,
-      signal: options.signal,
-      headers: {
-        ...headers,
-        ...(options.headers as Record<string, string>),
-      },
-    });
+    let lastError: Error | null = null;
 
-    if (!response.ok) {
-      // Handle authentication errors specially
-      if (response.status === 401) {
-        throw new AuthError();
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        // Create timeout abort controller
+        const timeoutController = new AbortController();
+        const timeoutId = setTimeout(() => timeoutController.abort(), timeout);
+
+        // Combine user signal with timeout signal
+        const combinedSignal = options.signal
+          ? this.combineSignals(options.signal, timeoutController.signal)
+          : timeoutController.signal;
+
+        try {
+          const response = await fetch(url, {
+            ...options,
+            signal: combinedSignal,
+            headers: {
+              ...headers,
+              ...(options.headers as Record<string, string>),
+            },
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            // Handle specific error status codes
+            if (response.status === 401) {
+              throw new AuthError();
+            }
+
+            if (response.status === 429) {
+              const retryAfterHeader = response.headers.get('Retry-After');
+              const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined;
+              throw new RateLimitError('Rate limited', retryAfter);
+            }
+
+            if (response.status === 503) {
+              throw new ServiceUnavailableError('Service temporarily unavailable');
+            }
+
+            // Parse error response
+            const errorText = await response.text();
+            const message =
+              process.env.NODE_ENV === 'production'
+                ? `Request failed with status ${response.status}`
+                : errorText || `HTTP ${response.status}`;
+
+            throw new ApiError(message, response.status);
+          }
+
+          // Handle empty responses
+          const text = await response.text();
+          return text ? JSON.parse(text) : (null as T);
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      } catch (error) {
+        lastError = error as Error;
+
+        // Handle abort/timeout
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new TimeoutError(`Request to ${endpoint} timed out after ${timeout}ms`);
+        }
+
+        // Handle network errors
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          lastError = new NetworkError('Network request failed');
+        }
+
+        // Don't retry non-retryable errors
+        if (!isRetryableError(lastError)) {
+          throw lastError;
+        }
+
+        // Don't retry on last attempt
+        if (attempt === retries) {
+          throw lastError;
+        }
+
+        // Exponential backoff
+        const backoffDelay = retryDelay * Math.pow(2, attempt);
+        await delay(backoffDelay);
       }
-
-      // Don't expose full error details in production
-      const errorText = await response.text();
-      const message = process.env.NODE_ENV === 'production'
-        ? `Request failed with status ${response.status}`
-        : errorText || `HTTP ${response.status}`;
-
-      throw new ApiError(message, response.status);
     }
 
-    // Handle empty responses
-    const text = await response.text();
-    return text ? JSON.parse(text) : (null as T);
+    throw lastError || new ApiError('Unknown error', 0);
+  }
+
+  // Combine multiple AbortSignals
+  private combineSignals(...signals: AbortSignal[]): AbortSignal {
+    const controller = new AbortController();
+
+    for (const signal of signals) {
+      if (signal.aborted) {
+        controller.abort();
+        break;
+      }
+      signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+
+    return controller.signal;
   }
 
   // Auth endpoints
