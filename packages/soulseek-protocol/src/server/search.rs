@@ -77,7 +77,30 @@ impl ParseBytes for SearchQuery {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RoomSearchQuery {
-    room: String,
-    ticket: u32,
-    query: String,
+    pub room: String,
+    pub ticket: u32,
+    pub query: String,
+}
+
+#[async_trait]
+impl ToBytes for RoomSearchQuery {
+    async fn write_to_buf(
+        &self,
+        buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
+    ) -> tokio::io::Result<()> {
+        let len = 4
+            + STR_LENGTH_PREFIX
+            + self.room.len() as u32
+            + 4
+            + STR_LENGTH_PREFIX
+            + self.query.len() as u32;
+
+        buffer.write_u32_le(len).await?;
+        buffer.write_u32_le(MessageCode::RoomSearch as u32).await?;
+        write_string(&self.room, buffer).await?;
+        buffer.write_u32_le(self.ticket).await?;
+        write_string(&self.query, buffer).await?;
+
+        Ok(())
+    }
 }

@@ -410,31 +410,65 @@ impl ToBytes for ServerRequest {
             ServerRequest::GetItemSimilarUsers(item) => {
                 write_str_msg(item, MessageCode::GetItemSimilarUsers, buffer).await
             }
-            ServerRequest::SetRoomTicker(_) => todo!(),
-            ServerRequest::AddHatedInterest(_) => todo!(),
-            ServerRequest::RemoveHatedInterest(_) => todo!(),
-            ServerRequest::RoomSearch(_) => todo!(),
-            ServerRequest::SendUploadSpeed(_) => todo!(),
-            ServerRequest::GivePrivileges(_) => todo!(),
-            ServerRequest::BranchLevel(_) => todo!(),
-            ServerRequest::BranchRoot(_) => todo!(),
-            ServerRequest::ChildDepth(_) => todo!(),
-            ServerRequest::AddUserToPrivateRoom(_) => todo!(),
-            ServerRequest::RemoveUserFromPrivateRoom(_) => todo!(),
+            ServerRequest::SetRoomTicker(ticker) => {
+                ticker
+                    .write_to_buf_with_code(buffer, MessageCode::SetRoomTicker)
+                    .await
+            }
+            ServerRequest::AddHatedInterest(interest) => {
+                write_str_msg(interest, MessageCode::HatedInterestAdd, buffer).await
+            }
+            ServerRequest::RemoveHatedInterest(interest) => {
+                write_str_msg(interest, MessageCode::HatedInterestRemove, buffer).await
+            }
+            ServerRequest::RoomSearch(query) => query.write_to_buf(buffer).await,
+            ServerRequest::SendUploadSpeed(speed) => {
+                write_u32_msg(*speed, MessageCode::SendUploadSpeed, buffer).await
+            }
+            ServerRequest::GivePrivileges(gift) => gift.write_to_buf(buffer).await,
+            ServerRequest::BranchLevel(level) => {
+                write_u32_msg(*level, MessageCode::BranchLevel, buffer).await
+            }
+            ServerRequest::BranchRoot(root) => {
+                write_str_msg(root, MessageCode::BranchRoot, buffer).await
+            }
+            ServerRequest::ChildDepth(depth) => {
+                write_u32_msg(*depth, MessageCode::ChildDepth, buffer).await
+            }
+            ServerRequest::AddUserToPrivateRoom(event) => {
+                event
+                    .write_to_buf_with_code(buffer, MessageCode::PrivateRoomAddUser)
+                    .await
+            }
+            ServerRequest::RemoveUserFromPrivateRoom(event) => {
+                event
+                    .write_to_buf_with_code(buffer, MessageCode::PrivateRoomRemoveUser)
+                    .await
+            }
             ServerRequest::PrivateRoomDropMemberShip(room) => {
-                write_str_msg(room, MessageCode::GetItemSimilarUsers, buffer).await
+                write_str_msg(room, MessageCode::PrivateRoomDropMembership, buffer).await
             }
             ServerRequest::PrivateRoomDropOwnerShip(room) => {
-                write_str_msg(room, MessageCode::GetItemSimilarUsers, buffer).await
+                write_str_msg(room, MessageCode::PrivateRoomDropOwnership, buffer).await
             }
             ServerRequest::PrivateRoomUnknown(room) => {
-                write_str_msg(room, MessageCode::GetItemSimilarUsers, buffer).await
+                write_str_msg(room, MessageCode::PrivateRoomUnknown, buffer).await
             }
-            ServerRequest::PrivateRoomToggle(_) => todo!(),
-            ServerRequest::NewPassWord(_) => todo!(),
-            ServerRequest::PrivateRoomAddOperator(_) => todo!(),
-            ServerRequest::PrivateRoomRemoveOperator(_) => todo!(),
-            ServerRequest::MessageUsers(_) => todo!(),
+            ServerRequest::PrivateRoomToggle(enabled) => {
+                write_bool_msg(*enabled, MessageCode::PrivateRoomToggle, buffer).await
+            }
+            ServerRequest::NewPassWord(password) => {
+                write_str_msg(password, MessageCode::NewPassword, buffer).await
+            }
+            ServerRequest::PrivateRoomAddOperator(event) => {
+                event
+                    .write_to_buf_with_code(buffer, MessageCode::PrivateRoomAddOperator)
+                    .await
+            }
+            ServerRequest::PrivateRoomRemoveOperator(room) => {
+                write_str_msg(room, MessageCode::PrivateRoomRemoveOperator, buffer).await
+            }
+            ServerRequest::MessageUsers(group_message) => group_message.write_to_buf(buffer).await,
             ServerRequest::CantConnectToPeer(ticket) => ticket.write_to_buf(buffer).await,
         }
     }

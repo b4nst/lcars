@@ -85,6 +85,34 @@ impl ParseBytes for PrivateMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GroupMessage {
-    users: Vec<String>,
-    message: String,
+    pub users: Vec<String>,
+    pub message: String,
+}
+
+#[async_trait]
+impl ToBytes for GroupMessage {
+    async fn write_to_buf(
+        &self,
+        buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
+    ) -> tokio::io::Result<()> {
+        // Calculate total length: code (4) + user count (4) + all users + message
+        let mut users_len: u32 = 0;
+        for user in &self.users {
+            users_len += STR_LENGTH_PREFIX + user.len() as u32;
+        }
+        let len = 4 + 4 + users_len + STR_LENGTH_PREFIX + self.message.len() as u32;
+
+        buffer.write_u32_le(len).await?;
+        buffer
+            .write_u32_le(MessageCode::MessageUsers as u32)
+            .await?;
+        buffer.write_u32_le(self.users.len() as u32).await?;
+
+        for user in &self.users {
+            write_string(user, buffer).await?;
+        }
+
+        write_string(&self.message, buffer).await?;
+        Ok(())
+    }
 }
