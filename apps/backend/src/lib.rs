@@ -18,8 +18,8 @@ pub mod services;
 
 use config::Config;
 use services::{
-    AuthService, IndexerManager, MusicBrainzClient, Scheduler, StorageManager, TmdbClient,
-    TorrentEngine,
+    AuthService, IndexerManager, MusicBrainzClient, Scheduler, SoulseekEngine, StorageManager,
+    TmdbClient, TorrentEngine,
 };
 
 /// Application state shared across handlers
@@ -32,6 +32,7 @@ pub struct AppState {
     pub musicbrainz_client: Option<Arc<MusicBrainzClient>>,
     pub indexer_manager: Arc<IndexerManager>,
     pub torrent_engine: Option<Arc<TorrentEngine>>,
+    pub soulseek_engine: Option<Arc<SoulseekEngine>>,
     pub scheduler: Option<Arc<Scheduler>>,
     pub start_time: std::time::Instant,
     pub storage_manager: Option<Arc<StorageManager>>,
@@ -61,6 +62,11 @@ impl AppState {
     /// Get a reference to the torrent engine, if initialized.
     pub fn torrent_engine(&self) -> Option<&TorrentEngine> {
         self.torrent_engine.as_deref()
+    }
+
+    /// Get a reference to the Soulseek engine, if initialized.
+    pub fn soulseek_engine(&self) -> Option<&SoulseekEngine> {
+        self.soulseek_engine.as_deref()
     }
 
     /// Get a reference to the scheduler, if initialized.

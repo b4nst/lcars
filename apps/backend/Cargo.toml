@@ -38,6 +38,8 @@ urlencoding = "2.1"
 librqbit = { version = "8.0", default-features = false, features = ["rust-tls"] }
 tokio-cron-scheduler = "0.13"
 tower-http = { version = "0.5", features = ["cors"] }
+soulseek-protocol = { path = "../../packages/soulseek-protocol" }
+bytes = "1.5"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
