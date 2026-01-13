@@ -1,12 +1,15 @@
 use crate::{
     async_trait,
-    frame::{read_string, ParseBytes, ToBytes},
-    server::user::{Status, UserData},
+    frame::{read_string, write_string, ParseBytes, ToBytes, STR_LENGTH_PREFIX},
+    server::{
+        user::{Status, UserData},
+        MessageCode, HEADER_LEN,
+    },
     Deserialize, Serialize,
 };
 use bytes::Buf;
 use std::io::Cursor;
-use tokio::io::{AsyncWrite, BufWriter};
+use tokio::io::{AsyncWrite, AsyncWriteExt, BufWriter};
 
 type Rooms = Vec<(String, u32)>;
 
@@ -122,9 +125,33 @@ impl ParseBytes for UserRoomEvent {
 impl ToBytes for UserRoomEvent {
     async fn write_to_buf(
         &self,
-        _buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
+        buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
     ) -> tokio::io::Result<()> {
-        todo!()
+        // This doesn't include the message code - caller must provide that
+        write_string(&self.room, buffer).await?;
+        write_string(&self.username, buffer).await?;
+        Ok(())
+    }
+}
+
+impl UserRoomEvent {
+    /// Write the event with a specific message code
+    pub(crate) async fn write_to_buf_with_code(
+        &self,
+        buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
+        code: MessageCode,
+    ) -> tokio::io::Result<()> {
+        let len = HEADER_LEN
+            + STR_LENGTH_PREFIX
+            + self.room.len() as u32
+            + STR_LENGTH_PREFIX
+            + self.username.len() as u32;
+
+        buffer.write_u32_le(len).await?;
+        buffer.write_u32_le(code as u32).await?;
+        write_string(&self.room, buffer).await?;
+        write_string(&self.username, buffer).await?;
+        Ok(())
     }
 }
 
@@ -241,7 +268,7 @@ impl ParseBytes for RoomUser {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RoomTickers {
     room: String,
-    tickers: Vec<Ticker>,
+    tickers: Vec<UserTicker>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -267,8 +294,36 @@ impl ParseBytes for RoomTicker {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ticker {
-    username: String,
-    ticker: String,
+    pub room: String,
+    pub ticker: String,
+}
+
+impl Ticker {
+    /// Write the ticker with a specific message code
+    pub(crate) async fn write_to_buf_with_code(
+        &self,
+        buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
+        code: MessageCode,
+    ) -> tokio::io::Result<()> {
+        let len = HEADER_LEN
+            + STR_LENGTH_PREFIX
+            + self.room.len() as u32
+            + STR_LENGTH_PREFIX
+            + self.ticker.len() as u32;
+
+        buffer.write_u32_le(len).await?;
+        buffer.write_u32_le(code as u32).await?;
+        write_string(&self.room, buffer).await?;
+        write_string(&self.ticker, buffer).await?;
+        Ok(())
+    }
+}
+
+/// Internal ticker representation with username (parsed from server responses)
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserTicker {
+    pub username: String,
+    pub ticker: String,
 }
 
 impl ParseBytes for RoomTickers {
@@ -282,7 +337,7 @@ impl ParseBytes for RoomTickers {
             let username = read_string(src)?;
             let ticker = read_string(src)?;
 
-            tickers.push(Ticker { username, ticker });
+            tickers.push(UserTicker { username, ticker });
         }
 
         Ok(RoomTickers { room, tickers })

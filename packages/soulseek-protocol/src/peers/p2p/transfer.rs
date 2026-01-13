@@ -71,9 +71,29 @@ impl ParseBytes for TransferRequest {
 impl ToBytes for TransferRequest {
     async fn write_to_buf(
         &self,
-        _buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
+        buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
     ) -> tokio::io::Result<()> {
-        todo!()
+        // Message layout:
+        // - direction: u32 (4 bytes)
+        // - ticket: u32 (4 bytes)
+        // - filename: length-prefixed string (4 + len bytes)
+        // - file_size: u64 (8 bytes, only if direction == 1)
+        let file_size_len = if self.file_size.is_some() { 8 } else { 0 };
+        let len = 4 + 4 + 4 + STR_LENGTH_PREFIX + self.filename.len() as u32 + file_size_len;
+
+        buffer.write_u32_le(len).await?;
+        buffer
+            .write_u32_le(PeerMessageCode::TransferRequest as u32)
+            .await?;
+        buffer.write_u32_le(self.direction).await?;
+        buffer.write_u32_le(self.ticket).await?;
+        write_string(&self.filename, buffer).await?;
+
+        if let Some(size) = self.file_size {
+            buffer.write_u64_le(size).await?;
+        }
+
+        Ok(())
     }
 }
 
@@ -87,9 +107,24 @@ pub struct PlaceInQueueReply {
 impl ToBytes for PlaceInQueueReply {
     async fn write_to_buf(
         &self,
-        _buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
+        buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
     ) -> tokio::io::Result<()> {
-        todo!()
+        // Note: According to protocol spec, 'place' is typically a u32, but the struct
+        // uses String. We serialize as two strings for now matching struct definition.
+        let len = 4
+            + STR_LENGTH_PREFIX
+            + self.filename.len() as u32
+            + STR_LENGTH_PREFIX
+            + self.place.len() as u32;
+
+        buffer.write_u32_le(len).await?;
+        buffer
+            .write_u32_le(PeerMessageCode::PlaceInQueueReply as u32)
+            .await?;
+        write_string(&self.filename, buffer).await?;
+        write_string(&self.place, buffer).await?;
+
+        Ok(())
     }
 }
 
@@ -110,9 +145,17 @@ impl ParseBytes for UploadFailed {
 impl ToBytes for UploadFailed {
     async fn write_to_buf(
         &self,
-        _buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
+        buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
     ) -> tokio::io::Result<()> {
-        todo!()
+        let len = 4 + STR_LENGTH_PREFIX + self.filename.len() as u32;
+
+        buffer.write_u32_le(len).await?;
+        buffer
+            .write_u32_le(PeerMessageCode::UploadFailed as u32)
+            .await?;
+        write_string(&self.filename, buffer).await?;
+
+        Ok(())
     }
 }
 
@@ -170,9 +213,17 @@ impl ParseBytes for PlaceInQueueRequest {
 impl ToBytes for PlaceInQueueRequest {
     async fn write_to_buf(
         &self,
-        _buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
+        buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
     ) -> tokio::io::Result<()> {
-        todo!()
+        let len = 4 + STR_LENGTH_PREFIX + self.file_name.len() as u32;
+
+        buffer.write_u32_le(len).await?;
+        buffer
+            .write_u32_le(PeerMessageCode::PlaceInQueueRequest as u32)
+            .await?;
+        write_string(&self.file_name, buffer).await?;
+
+        Ok(())
     }
 }
 
