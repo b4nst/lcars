@@ -25,7 +25,7 @@ tasks:
       - '@group(sources)'
       - '@group(cargo)'
     outputs:
-      - 'target/release/backend'
+      - '/target/release/backend'
 
   dev:
     command: 'cargo'
