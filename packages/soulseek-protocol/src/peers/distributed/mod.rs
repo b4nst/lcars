@@ -1,6 +1,6 @@
 use crate::{
     async_trait, error,
-    frame::{read_string, ParseBytes, ToBytes},
+    frame::{read_string, write_string, ParseBytes, ToBytes, STR_LENGTH_PREFIX},
     MessageCode, ProtocolHeader, ProtocolMessage,
 };
 use bytes::Buf;
@@ -87,12 +87,56 @@ impl ToBytes for DistributedMessage {
             DistributedMessage::Ping => {
                 write_empty_distributed_msg(DistributedMessageCode::Ping, buffer).await?
             }
-            DistributedMessage::SearchRequest(_) => todo!(),
-            DistributedMessage::BranchLevel(_) => todo!(),
-            DistributedMessage::BranchRoot(_) => todo!(),
-            DistributedMessage::ChildDepth(_) => todo!(),
-            DistributedMessage::ServerSearchRequest => todo!(),
-            DistributedMessage::Unknown => todo!(),
+            DistributedMessage::SearchRequest(req) => {
+                // Layout: unknown (4) + username string + ticket (4) + query string
+                let len = 1
+                    + 4
+                    + STR_LENGTH_PREFIX
+                    + req.username.len() as u32
+                    + 4
+                    + STR_LENGTH_PREFIX
+                    + req.query.len() as u32;
+                buffer.write_u32_le(len).await?;
+                buffer
+                    .write_u8(DistributedMessageCode::SearchRequest as u8)
+                    .await?;
+                buffer.write_u32_le(req.unknown).await?;
+                write_string(&req.username, buffer).await?;
+                buffer.write_u32_le(req.ticket).await?;
+                write_string(&req.query, buffer).await?;
+            }
+            DistributedMessage::BranchLevel(level) => {
+                // Layout: code (1) + level (4)
+                buffer.write_u32_le(5).await?;
+                buffer
+                    .write_u8(DistributedMessageCode::BranchLevel as u8)
+                    .await?;
+                buffer.write_u32_le(*level).await?;
+            }
+            DistributedMessage::BranchRoot(root) => {
+                // Layout: code (1) + root string
+                let len = 1 + STR_LENGTH_PREFIX + root.len() as u32;
+                buffer.write_u32_le(len).await?;
+                buffer
+                    .write_u8(DistributedMessageCode::BranchRoot as u8)
+                    .await?;
+                write_string(root, buffer).await?;
+            }
+            DistributedMessage::ChildDepth(depth) => {
+                // Layout: code (1) + depth (4)
+                buffer.write_u32_le(5).await?;
+                buffer
+                    .write_u8(DistributedMessageCode::ChildDepth as u8)
+                    .await?;
+                buffer.write_u32_le(*depth).await?;
+            }
+            DistributedMessage::ServerSearchRequest => {
+                write_empty_distributed_msg(DistributedMessageCode::ServerSearchRequest, buffer)
+                    .await?
+            }
+            DistributedMessage::Unknown => {
+                // Cannot serialize unknown messages
+            }
         }
 
         Ok(())

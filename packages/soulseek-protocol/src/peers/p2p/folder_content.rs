@@ -1,6 +1,6 @@
 use crate::{
     async_trait,
-    frame::{read_string, ParseBytes, ToBytes},
+    frame::{read_string, write_string, ParseBytes, ToBytes, STR_LENGTH_PREFIX},
     peers::p2p::PeerMessageCode,
     Serialize,
 };
@@ -10,7 +10,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt, BufWriter};
 
 #[derive(Debug, Serialize)]
 pub struct FolderContentsRequest {
-    files: Vec<String>,
+    pub files: Vec<String>,
 }
 
 impl ParseBytes for FolderContentsRequest {
@@ -32,18 +32,23 @@ impl ToBytes for FolderContentsRequest {
         &self,
         buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
     ) -> tokio::io::Result<()> {
-        let mut files_size = 0;
+        // Calculate total length: message code (4) + file count (4) + all file strings
+        let mut files_size: u32 = 0;
         for file in &self.files {
-            files_size += 4;
-            files_size += file.len() as u32;
+            files_size += STR_LENGTH_PREFIX + file.len() as u32;
         }
-
-        let length = 4 + self.files.len() as u32 + files_size;
+        let length = 4 + 4 + files_size; // code + count + files
 
         buffer.write_u32_le(length).await?;
         buffer
             .write_u32_le(PeerMessageCode::FolderContentsRequest as u32)
             .await?;
+        buffer.write_u32_le(self.files.len() as u32).await?;
+
+        for file in &self.files {
+            write_string(file, buffer).await?;
+        }
+
         Ok(())
     }
 }

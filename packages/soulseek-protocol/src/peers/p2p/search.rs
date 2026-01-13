@@ -1,12 +1,12 @@
 use crate::{
     async_trait,
-    frame::{read_string, ParseBytes, ToBytes},
-    peers::p2p::{shared_directories::File, zlib::decompress},
+    frame::{read_string, write_string, ParseBytes, ToBytes},
+    peers::p2p::{shared_directories::File, zlib, zlib::decompress, PeerMessageCode},
     Serialize,
 };
 use bytes::Buf;
 use std::io::Cursor;
-use tokio::io::{AsyncWrite, BufWriter};
+use tokio::io::{AsyncWrite, AsyncWriteExt, BufWriter};
 
 #[derive(Debug, Serialize)]
 pub struct SearchReply {
@@ -23,9 +23,50 @@ pub struct SearchReply {
 impl ToBytes for SearchReply {
     async fn write_to_buf(
         &self,
-        _buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
+        buffer: &mut BufWriter<impl AsyncWrite + Unpin + Send>,
     ) -> tokio::io::Result<()> {
-        todo!()
+        // Pack message into inner buffer first, then compress
+        let inner = &mut vec![];
+        let mut message_buffer = BufWriter::new(inner);
+
+        write_string(&self.username, &mut message_buffer).await?;
+        message_buffer.write_u32_le(self.ticket).await?;
+        message_buffer.write_u32_le(self.files.len() as u32).await?;
+
+        for file in &self.files {
+            file.write_to_buf(&mut message_buffer).await?;
+        }
+
+        message_buffer
+            .write_u8(if self.slot_free { 1 } else { 0 })
+            .await?;
+        message_buffer.write_u32_le(self.average_speed).await?;
+        message_buffer.write_u32_le(self.queue_length).await?;
+
+        if !self.locked_results.is_empty() {
+            message_buffer
+                .write_u32_le(self.locked_results.len() as u32)
+                .await?;
+            for file in &self.locked_results {
+                file.write_to_buf(&mut message_buffer).await?;
+            }
+        }
+
+        message_buffer.flush().await?;
+        let data = message_buffer.into_inner();
+        // Compress message
+        let compressed_data = zlib::compress(data)?;
+
+        // Write to connection buffer
+        buffer
+            .write_u32_le(compressed_data.len() as u32 + 4)
+            .await?;
+        buffer
+            .write_u32_le(PeerMessageCode::SearchReply as u32)
+            .await?;
+        buffer.write_all(compressed_data.as_slice()).await?;
+
+        Ok(())
     }
 }
 
