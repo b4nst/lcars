@@ -8,12 +8,15 @@ RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig
 
 WORKDIR /app
 
-# Copy everything and build
+# Copy workspace files
 COPY Cargo.toml Cargo.lock ./
-COPY src ./src
 
-# Build the application
-RUN cargo build --release
+# Copy workspace members
+COPY packages/soulseek-protocol ./packages/soulseek-protocol
+COPY apps/backend ./apps/backend
+
+# Build the backend application
+RUN cargo build --release -p backend
 
 # Runtime stage
 FROM alpine:3.21
