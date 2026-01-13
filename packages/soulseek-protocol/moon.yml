@@ -1,0 +1,76 @@
+# https://moonrepo.dev/docs/config/project
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+type: 'library'
+language: 'rust'
+stack: 'backend'
+tags:
+  - 'rust'
+  - 'protocol'
+  - 'soulseek'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+  cargo:
+    - 'Cargo.toml'
+
+tasks:
+  build:
+    command: 'cargo'
+    args:
+      - 'build'
+      - '--release'
+      - '-p'
+      - 'soulseek-protocol'
+    inputs:
+      - '@group(sources)'
+      - '@group(cargo)'
+
+  check:
+    command: 'cargo'
+    args:
+      - 'check'
+      - '-p'
+      - 'soulseek-protocol'
+    inputs:
+      - '@group(sources)'
+      - '@group(cargo)'
+
+  test:
+    command: 'cargo'
+    args:
+      - 'test'
+      - '-p'
+      - 'soulseek-protocol'
+    inputs:
+      - '@group(sources)'
+      - '@group(cargo)'
+
+  fmt:
+    command: 'cargo'
+    args:
+      - 'fmt'
+      - '-p'
+      - 'soulseek-protocol'
+    inputs:
+      - '@group(sources)'
+    local: true
+
+  fmt-check:
+    extends: 'fmt'
+    args: '--check'
+    local: false
+
+  clippy:
+    command: 'cargo'
+    args:
+      - 'clippy'
+      - '-p'
+      - 'soulseek-protocol'
+      - '--'
+      - '-D'
+      - 'warnings'
+    inputs:
+      - '@group(sources)'
+      - '@group(cargo)'
