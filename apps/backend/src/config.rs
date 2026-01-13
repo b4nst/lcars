@@ -22,6 +22,8 @@ pub struct Config {
     #[serde(default)]
     pub torrent: TorrentConfig,
     #[serde(default)]
+    pub soulseek: SoulseekConfig,
+    #[serde(default)]
     pub storage: StorageConfig,
     #[serde(default)]
     pub scheduler: SchedulerConfig,
@@ -192,6 +194,72 @@ fn default_ratio_limit() -> f64 {
 
 fn default_time_limit() -> u64 {
     48
+}
+
+/// Soulseek client configuration
+#[derive(Clone, Deserialize)]
+pub struct SoulseekConfig {
+    pub username: Option<String>,
+    pub password: Option<String>,
+    #[serde(default = "default_soulseek_download_dir")]
+    pub download_dir: PathBuf,
+    #[serde(default = "default_listen_port")]
+    pub listen_port: u16,
+    #[serde(default = "default_server_host")]
+    pub server_host: String,
+    #[serde(default = "default_server_port")]
+    pub server_port: u16,
+    #[serde(default = "default_max_concurrent_downloads")]
+    pub max_concurrent_downloads: usize,
+}
+
+// Custom Debug implementation to avoid exposing password
+impl std::fmt::Debug for SoulseekConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SoulseekConfig")
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .field("download_dir", &self.download_dir)
+            .field("listen_port", &self.listen_port)
+            .field("server_host", &self.server_host)
+            .field("server_port", &self.server_port)
+            .field("max_concurrent_downloads", &self.max_concurrent_downloads)
+            .finish()
+    }
+}
+
+impl Default for SoulseekConfig {
+    fn default() -> Self {
+        Self {
+            username: None,
+            password: None,
+            download_dir: default_soulseek_download_dir(),
+            listen_port: default_listen_port(),
+            server_host: default_server_host(),
+            server_port: default_server_port(),
+            max_concurrent_downloads: default_max_concurrent_downloads(),
+        }
+    }
+}
+
+fn default_soulseek_download_dir() -> PathBuf {
+    PathBuf::from("./downloads/soulseek")
+}
+
+fn default_listen_port() -> u16 {
+    2234
+}
+
+fn default_server_host() -> String {
+    "server.slsknet.org".to_string()
+}
+
+fn default_server_port() -> u16 {
+    2242
+}
+
+fn default_max_concurrent_downloads() -> usize {
+    5
 }
 
 /// Storage configuration

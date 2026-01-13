@@ -55,6 +55,7 @@ impl TestApp {
             tmdb: Default::default(),
             musicbrainz: Default::default(),
             torrent: Default::default(),
+            soulseek: Default::default(),
             storage: Default::default(),
             scheduler: Default::default(),
         };
@@ -76,6 +77,7 @@ impl TestApp {
             musicbrainz_client: None,
             indexer_manager,
             torrent_engine: None,
+            soulseek_engine: None,
             scheduler: None,
             start_time: std::time::Instant::now(),
             storage_manager: None,

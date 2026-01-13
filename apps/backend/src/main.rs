@@ -15,8 +15,8 @@ use backend::{api, config, db, middleware, services, AppState};
 
 use config::Config;
 use services::{
-    AuthService, IndexerManager, JobContext, MusicBrainzClient, Scheduler, StorageManager,
-    TmdbClient, TorrentEngine,
+    AuthService, IndexerManager, JobContext, MusicBrainzClient, Scheduler, SoulseekEngine,
+    StorageManager, TmdbClient, TorrentEngine,
 };
 
 fn init_tracing() {
@@ -213,6 +213,28 @@ async fn main() {
         }
     };
 
+    // Create Soulseek engine (optional - requires credentials)
+    let soulseek_engine =
+        if config.soulseek.username.is_some() && config.soulseek.password.is_some() {
+            match SoulseekEngine::new_shared(config.soulseek.clone()).await {
+                Ok(engine) => {
+                    tracing::info!(
+                        server = %config.soulseek.server_host,
+                        "Soulseek engine initialized (not connected)"
+                    );
+                    Some(engine)
+                }
+                Err(e) => {
+                    tracing::error!("Failed to create Soulseek engine: {}", e);
+                    tracing::warn!("Soulseek features will be unavailable");
+                    None
+                }
+            }
+        } else {
+            tracing::info!("Soulseek credentials not configured - Soulseek features disabled");
+            None
+        };
+
     // Create job context for scheduler
     let job_ctx = JobContext {
         db: Arc::new(Mutex::new(conn)),
@@ -265,6 +287,7 @@ async fn main() {
         musicbrainz_client,
         indexer_manager,
         torrent_engine,
+        soulseek_engine,
         scheduler,
         start_time: std::time::Instant::now(),
         storage_manager,
