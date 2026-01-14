@@ -115,7 +115,10 @@ pub async fn list_downloads(
         )?;
 
         let downloads = stmt
-            .query_map(rusqlite::params![query.status, query.source], map_download_row)?
+            .query_map(
+                rusqlite::params![query.status, query.source],
+                map_download_row,
+            )?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         downloads
     };
