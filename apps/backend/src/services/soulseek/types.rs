@@ -136,3 +136,163 @@ pub struct SoulseekStats {
     /// Number of completed downloads.
     pub completed_downloads: usize,
 }
+
+/// Status of a Soulseek download.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadStatus {
+    /// Waiting for connection to peer.
+    Connecting,
+    /// Queued on the remote peer.
+    Queued,
+    /// Currently downloading.
+    Downloading,
+    /// Download completed successfully.
+    Completed,
+    /// Download failed.
+    Failed,
+    /// Download was cancelled.
+    Cancelled,
+}
+
+impl std::fmt::Display for DownloadStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownloadStatus::Connecting => write!(f, "connecting"),
+            DownloadStatus::Queued => write!(f, "queued"),
+            DownloadStatus::Downloading => write!(f, "downloading"),
+            DownloadStatus::Completed => write!(f, "completed"),
+            DownloadStatus::Failed => write!(f, "failed"),
+            DownloadStatus::Cancelled => write!(f, "cancelled"),
+        }
+    }
+}
+
+/// State of a Soulseek download.
+#[derive(Debug, Clone)]
+pub struct DownloadState {
+    /// Unique identifier for this download.
+    pub id: String,
+    /// Username of the peer sharing the file.
+    pub username: String,
+    /// Full path of the file on the remote peer.
+    pub filename: String,
+    /// File size in bytes.
+    pub size: u64,
+    /// Current download status.
+    pub status: DownloadStatus,
+    /// Bytes downloaded so far.
+    pub downloaded: u64,
+    /// Download speed in bytes/second.
+    pub speed: u64,
+    /// Position in the remote user's queue (if queued).
+    pub queue_position: Option<u32>,
+    /// Error message if download failed.
+    pub error: Option<String>,
+    /// Local path where the file will be saved.
+    pub local_path: Option<std::path::PathBuf>,
+    /// Optional media type link (track, album, etc.).
+    pub media_type: Option<String>,
+    /// Optional media ID to link to our library.
+    pub media_id: Option<i64>,
+    /// Token for the transfer.
+    pub ticket: u32,
+}
+
+impl DownloadState {
+    /// Create a new download state.
+    pub fn new(id: String, username: String, filename: String, size: u64, ticket: u32) -> Self {
+        Self {
+            id,
+            username,
+            filename,
+            size,
+            status: DownloadStatus::Connecting,
+            downloaded: 0,
+            speed: 0,
+            queue_position: None,
+            error: None,
+            local_path: None,
+            media_type: None,
+            media_id: None,
+            ticket,
+        }
+    }
+
+    /// Update progress.
+    pub fn update_progress(&mut self, downloaded: u64, speed: u64) {
+        self.downloaded = downloaded;
+        self.speed = speed;
+        self.status = DownloadStatus::Downloading;
+    }
+
+    /// Mark as queued with position.
+    pub fn mark_queued(&mut self, position: u32) {
+        self.status = DownloadStatus::Queued;
+        self.queue_position = Some(position);
+    }
+
+    /// Mark as completed.
+    pub fn mark_completed(&mut self, local_path: std::path::PathBuf) {
+        self.status = DownloadStatus::Completed;
+        self.downloaded = self.size;
+        self.local_path = Some(local_path);
+    }
+
+    /// Mark as failed.
+    pub fn mark_failed(&mut self, error: String) {
+        self.status = DownloadStatus::Failed;
+        self.error = Some(error);
+    }
+
+    /// Progress percentage (0-100).
+    pub fn progress_percent(&self) -> u8 {
+        if self.size == 0 {
+            return 0;
+        }
+        ((self.downloaded * 100) / self.size).min(100) as u8
+    }
+}
+
+/// Request to initiate a download.
+#[derive(Debug, Clone)]
+pub struct DownloadRequest {
+    /// Username of the peer sharing the file.
+    pub username: String,
+    /// Full path of the file on the remote peer.
+    pub filename: String,
+    /// File size in bytes.
+    pub size: u64,
+    /// Optional media type (track, album, episode).
+    pub media_type: Option<String>,
+    /// Optional media ID to link to our library.
+    pub media_id: Option<i64>,
+}
+
+/// Information about a browsed directory.
+#[derive(Debug, Clone, Serialize)]
+pub struct BrowsedDirectory {
+    /// Path of the directory.
+    pub path: String,
+    /// Number of files in the directory.
+    pub file_count: usize,
+    /// Files in this directory.
+    pub files: Vec<BrowsedFile>,
+}
+
+/// A file from a browsed directory.
+#[derive(Debug, Clone, Serialize)]
+pub struct BrowsedFile {
+    /// Filename (without full path).
+    pub name: String,
+    /// Full path on the remote system.
+    pub full_path: String,
+    /// File size in bytes.
+    pub size: u64,
+    /// File extension.
+    pub extension: String,
+    /// Bitrate (if available).
+    pub bitrate: Option<u32>,
+    /// Duration in seconds (if available).
+    pub duration: Option<u32>,
+}

@@ -40,6 +40,7 @@ tokio-cron-scheduler = "0.13"
 tower-http = { version = "0.5", features = ["cors"] }
 soulseek-protocol = { path = "../../packages/soulseek-protocol" }
 bytes = "1.5"
+uuid = { version = "1.19.0", features = ["v4"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
