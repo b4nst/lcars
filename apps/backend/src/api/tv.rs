@@ -1226,8 +1226,8 @@ pub async fn download_episode(
 
     db.execute(
         r#"
-        INSERT INTO downloads (info_hash, name, media_type, media_id, magnet, status)
-        VALUES (?1, ?2, 'episode', ?3, ?4, 'downloading')
+        INSERT INTO downloads (source_type, source_id, name, media_type, media_id, source_uri, status)
+        VALUES ('torrent', ?1, ?2, 'episode', ?3, ?4, 'downloading')
         "#,
         rusqlite::params![info_hash, download_name, episode_id, body.magnet],
     )?;

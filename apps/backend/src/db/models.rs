@@ -114,6 +114,36 @@ impl std::fmt::Display for DownloadStatus {
     }
 }
 
+/// Source type for downloads - torrent or Soulseek.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DownloadSource {
+    #[default]
+    Torrent,
+    Soulseek,
+}
+
+impl std::fmt::Display for DownloadSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownloadSource::Torrent => write!(f, "torrent"),
+            DownloadSource::Soulseek => write!(f, "soulseek"),
+        }
+    }
+}
+
+impl std::str::FromStr for DownloadSource {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "torrent" => Ok(DownloadSource::Torrent),
+            "soulseek" => Ok(DownloadSource::Soulseek),
+            _ => Err(format!("Invalid download source: {}", s)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MediaType {
@@ -285,11 +315,15 @@ pub struct Indexer {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Download {
     pub id: i64,
-    pub info_hash: String,
+    /// Source type: torrent or soulseek
+    pub source_type: DownloadSource,
+    /// Source identifier: info_hash for torrents, transfer_id for soulseek
+    pub source_id: String,
+    /// Source URI: magnet link for torrents, soulseek://user/path for soulseek
+    pub source_uri: String,
     pub name: String,
     pub media_type: MediaType,
     pub media_id: i64,
-    pub magnet: String,
     pub status: DownloadStatus,
     pub progress: f64,
     pub download_speed: i64,
@@ -303,6 +337,16 @@ pub struct Download {
     pub added_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
+    // Soulseek-specific fields (None for torrents)
+    /// Username of the Soulseek peer sharing the file
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub soulseek_username: Option<String>,
+    /// Original filename on the Soulseek peer's system
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub soulseek_filename: Option<String>,
+    /// Position in the remote user's download queue
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_position: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

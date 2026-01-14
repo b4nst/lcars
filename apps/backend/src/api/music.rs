@@ -1199,8 +1199,8 @@ pub async fn download_album(
 
     db.execute(
         r#"
-        INSERT INTO downloads (info_hash, name, media_type, media_id, magnet, status)
-        VALUES (?1, ?2, 'album', ?3, ?4, 'downloading')
+        INSERT INTO downloads (source_type, source_id, name, media_type, media_id, source_uri, status)
+        VALUES ('torrent', ?1, ?2, 'album', ?3, ?4, 'downloading')
         "#,
         rusqlite::params![info_hash, title, album_id, body.magnet],
     )?;
@@ -1592,8 +1592,8 @@ pub async fn download_track(
 
     db.execute(
         r#"
-        INSERT INTO downloads (info_hash, name, media_type, media_id, magnet, status)
-        VALUES (?1, ?2, 'track', ?3, ?4, 'downloading')
+        INSERT INTO downloads (source_type, source_id, name, media_type, media_id, source_uri, status)
+        VALUES ('torrent', ?1, ?2, 'track', ?3, ?4, 'downloading')
         "#,
         rusqlite::params![info_hash, title, track_id, body.magnet],
     )?;
