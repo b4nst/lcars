@@ -1,4 +1,4 @@
-//! Soulseek API endpoints for search and status.
+//! Soulseek API endpoints for search, download, and status.
 
 use axum::{
     extract::{Path, Query, State},
@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result};
 use crate::middleware;
-use crate::services::soulseek::SoulseekStats;
+use crate::services::soulseek::{
+    DownloadRequest as EngineDownloadRequest, DownloadState, SoulseekStats,
+};
 use crate::AppState;
 
 // =============================================================================
@@ -107,6 +109,111 @@ pub struct StatusResponse {
 }
 
 // =============================================================================
+// Download Request/Response Types
+// =============================================================================
+
+/// Request body for starting a download.
+#[derive(Debug, Deserialize)]
+pub struct DownloadRequest {
+    /// Username of the peer sharing the file.
+    pub username: String,
+    /// Full path of the file on the peer's system.
+    pub filename: String,
+    /// File size in bytes.
+    pub size: u64,
+    /// Optional media type (track, album, episode).
+    pub media_type: Option<String>,
+    /// Optional media ID to link to our library.
+    pub media_id: Option<i64>,
+}
+
+/// Response for a download operation.
+#[derive(Debug, Serialize)]
+pub struct DownloadResponse {
+    /// Unique download ID.
+    pub id: String,
+    /// Source type (always "soulseek").
+    pub source_type: String,
+    /// Username of the peer.
+    pub username: String,
+    /// Filename being downloaded.
+    pub filename: String,
+    /// Download status.
+    pub status: String,
+    /// File size in bytes.
+    pub size: u64,
+    /// Bytes downloaded.
+    pub downloaded: u64,
+    /// Download speed in bytes/second.
+    pub speed: u64,
+    /// Position in the remote user's queue (if queued).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_position: Option<u32>,
+    /// Progress percentage (0-100).
+    pub progress_percent: u8,
+}
+
+impl From<&DownloadState> for DownloadResponse {
+    fn from(state: &DownloadState) -> Self {
+        Self {
+            id: state.id.clone(),
+            source_type: "soulseek".to_string(),
+            username: state.username.clone(),
+            filename: state.filename.clone(),
+            status: state.status.to_string(),
+            size: state.size,
+            downloaded: state.downloaded,
+            speed: state.speed,
+            queue_position: state.queue_position,
+            progress_percent: state.progress_percent(),
+        }
+    }
+}
+
+/// Response for browse operation.
+#[derive(Debug, Serialize)]
+pub struct BrowseResponse {
+    /// Username of the peer.
+    pub username: String,
+    /// List of directories with files.
+    pub directories: Vec<BrowseDirectoryResponse>,
+    /// Total number of directories.
+    pub total_directories: usize,
+    /// Total number of files.
+    pub total_files: usize,
+}
+
+/// A directory from browse results.
+#[derive(Debug, Serialize)]
+pub struct BrowseDirectoryResponse {
+    /// Directory path.
+    pub path: String,
+    /// Number of files in this directory.
+    pub file_count: usize,
+    /// Files in this directory.
+    pub files: Vec<BrowseFileResponse>,
+}
+
+/// A file from browse results.
+#[derive(Debug, Serialize)]
+pub struct BrowseFileResponse {
+    /// Filename (without full path).
+    pub name: String,
+    /// Full path on the remote system.
+    pub full_path: String,
+    /// File size in bytes.
+    pub size: u64,
+    /// File extension.
+    pub extension: String,
+    /// Bitrate (if available).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bitrate: Option<u32>,
+    /// Duration in seconds (if available).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<u32>,
+}
+
+// =============================================================================
 // Router
 // =============================================================================
 
@@ -118,6 +225,10 @@ pub fn router(state: AppState) -> Router<AppState> {
             "/search/{ticket}",
             get(get_search_results).delete(cancel_search),
         )
+        .route("/download", post(start_download))
+        .route("/downloads", get(list_downloads))
+        .route("/downloads/{id}", get(get_download).delete(cancel_download))
+        .route("/browse/{username}", get(browse_user))
         .route("/status", get(get_status))
         .layer(axum_mw::from_fn_with_state(
             state,
@@ -319,6 +430,189 @@ pub async fn get_status(State(state): State<AppState>) -> Result<Json<StatusResp
         active_searches: stats.active_searches,
         active_downloads: stats.active_downloads,
         completed_downloads: stats.completed_downloads,
+    }))
+}
+
+// =============================================================================
+// Download Handlers
+// =============================================================================
+
+/// POST /api/soulseek/download
+///
+/// Start a new Soulseek download.
+/// Returns 201 Created with the download details.
+pub async fn start_download(
+    State(state): State<AppState>,
+    Json(request): Json<DownloadRequest>,
+) -> Result<(StatusCode, Json<DownloadResponse>)> {
+    // Validate request
+    if request.username.trim().is_empty() {
+        return Err(AppError::BadRequest("Username cannot be empty".to_string()));
+    }
+    if request.filename.trim().is_empty() {
+        return Err(AppError::BadRequest("Filename cannot be empty".to_string()));
+    }
+
+    // Get Soulseek engine
+    let engine = state
+        .soulseek_engine()
+        .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?;
+
+    // Check if connected
+    if !engine.is_connected() {
+        return Err(AppError::ServiceUnavailable(
+            "Soulseek is not connected".to_string(),
+        ));
+    }
+
+    // Convert to engine request
+    let engine_request = EngineDownloadRequest {
+        username: request.username.clone(),
+        filename: request.filename.clone(),
+        size: request.size,
+        media_type: request.media_type,
+        media_id: request.media_id,
+    };
+
+    // Start the download
+    let id = engine.download(engine_request).await?;
+
+    tracing::info!(
+        id = %id,
+        username = %request.username,
+        filename = %request.filename,
+        "Started Soulseek download"
+    );
+
+    // Get the download state
+    let download_state = engine
+        .get_download(&id)
+        .await
+        .ok_or_else(|| AppError::Internal("Download state not found after creation".to_string()))?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(DownloadResponse::from(&download_state)),
+    ))
+}
+
+/// GET /api/soulseek/downloads
+///
+/// List all Soulseek downloads.
+pub async fn list_downloads(State(state): State<AppState>) -> Result<Json<Vec<DownloadResponse>>> {
+    // Get Soulseek engine
+    let engine = state
+        .soulseek_engine()
+        .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?;
+
+    let downloads = engine.get_downloads().await;
+    let responses: Vec<DownloadResponse> = downloads.iter().map(DownloadResponse::from).collect();
+
+    Ok(Json(responses))
+}
+
+/// GET /api/soulseek/downloads/{id}
+///
+/// Get a specific download by ID.
+pub async fn get_download(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<DownloadResponse>> {
+    // Get Soulseek engine
+    let engine = state
+        .soulseek_engine()
+        .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?;
+
+    let download = engine
+        .get_download(&id)
+        .await
+        .ok_or_else(|| AppError::NotFound(format!("Download with ID {} not found", id)))?;
+
+    Ok(Json(DownloadResponse::from(&download)))
+}
+
+/// DELETE /api/soulseek/downloads/{id}
+///
+/// Cancel a download.
+pub async fn cancel_download(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode> {
+    // Get Soulseek engine
+    let engine = state
+        .soulseek_engine()
+        .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?;
+
+    engine.cancel_download(&id).await?;
+
+    tracing::info!(id = %id, "Cancelled Soulseek download");
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// =============================================================================
+// Browse Handlers
+// =============================================================================
+
+/// GET /api/soulseek/browse/{username}
+///
+/// Browse a user's shared files.
+pub async fn browse_user(
+    State(state): State<AppState>,
+    Path(username): Path<String>,
+) -> Result<Json<BrowseResponse>> {
+    // Validate username
+    let username = username.trim();
+    if username.is_empty() {
+        return Err(AppError::BadRequest("Username cannot be empty".to_string()));
+    }
+
+    // Get Soulseek engine
+    let engine = state
+        .soulseek_engine()
+        .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?;
+
+    // Check if connected
+    if !engine.is_connected() {
+        return Err(AppError::ServiceUnavailable(
+            "Soulseek is not connected".to_string(),
+        ));
+    }
+
+    tracing::info!(username = %username, "Browsing user's shares");
+
+    // Browse the user
+    let directories = engine.browse_user(username).await?;
+
+    // Convert to response format
+    let total_files: usize = directories.iter().map(|d| d.file_count).sum();
+    let total_directories = directories.len();
+
+    let dir_responses: Vec<BrowseDirectoryResponse> = directories
+        .into_iter()
+        .map(|dir| BrowseDirectoryResponse {
+            path: dir.path,
+            file_count: dir.file_count,
+            files: dir
+                .files
+                .into_iter()
+                .map(|f| BrowseFileResponse {
+                    name: f.name,
+                    full_path: f.full_path,
+                    size: f.size,
+                    extension: f.extension,
+                    bitrate: f.bitrate,
+                    duration: f.duration,
+                })
+                .collect(),
+        })
+        .collect();
+
+    Ok(Json(BrowseResponse {
+        username: username.to_string(),
+        directories: dir_responses,
+        total_directories,
+        total_files,
     }))
 }
 
