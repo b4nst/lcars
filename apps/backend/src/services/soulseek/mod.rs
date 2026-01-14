@@ -7,8 +7,13 @@
 mod connection;
 mod engine;
 mod events;
+mod peer;
 mod types;
 
 pub use engine::SoulseekEngine;
 pub use events::SoulseekEvent;
-pub use types::{FileResult, SearchResult, SearchState, SoulseekStats};
+pub use peer::{BrowseResult, PeerConnection};
+pub use types::{
+    BrowsedDirectory, BrowsedFile, DownloadRequest, DownloadState, DownloadStatus, FileResult,
+    SearchResult, SearchState, SoulseekStats,
+};
