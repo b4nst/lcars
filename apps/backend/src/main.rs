@@ -414,6 +414,9 @@ async fn main() {
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT])
         .max_age(std::time::Duration::from_secs(3600));
 
+    // Build Soulseek routes (authenticated)
+    let soulseek_routes = api::soulseek::router(state.clone());
+
     // Build main router with state
     let app = Router::new()
         .route("/health", get(backend::health_check))
@@ -424,6 +427,7 @@ async fn main() {
         .nest("/api/music", music_routes)
         .nest("/api/downloads", downloads_routes)
         .nest("/api/search", search_routes)
+        .nest("/api/soulseek", soulseek_routes)
         .nest("/api/system", system_routes)
         .route("/api/ws", get(api::ws::ws_handler))
         .layer(cors)

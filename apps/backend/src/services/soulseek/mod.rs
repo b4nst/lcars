@@ -11,4 +11,4 @@ mod types;
 
 pub use engine::SoulseekEngine;
 pub use events::SoulseekEvent;
-pub use types::{FileResult, SearchState};
+pub use types::{FileResult, SearchResult, SearchState, SoulseekStats};
