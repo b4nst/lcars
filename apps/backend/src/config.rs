@@ -211,6 +211,17 @@ pub struct SoulseekConfig {
     pub server_port: u16,
     #[serde(default = "default_max_concurrent_downloads")]
     pub max_concurrent_downloads: usize,
+    // Sharing configuration
+    #[serde(default)]
+    pub share_dirs: Vec<PathBuf>,
+    #[serde(default)]
+    pub share_hidden: bool,
+    #[serde(default = "default_upload_slots")]
+    pub upload_slots: u32,
+    #[serde(default)]
+    pub upload_speed_limit: Option<u64>,
+    #[serde(default)]
+    pub sharing_enabled: bool,
 }
 
 // Custom Debug implementation to avoid exposing password
@@ -224,6 +235,11 @@ impl std::fmt::Debug for SoulseekConfig {
             .field("server_host", &self.server_host)
             .field("server_port", &self.server_port)
             .field("max_concurrent_downloads", &self.max_concurrent_downloads)
+            .field("share_dirs", &self.share_dirs)
+            .field("share_hidden", &self.share_hidden)
+            .field("upload_slots", &self.upload_slots)
+            .field("upload_speed_limit", &self.upload_speed_limit)
+            .field("sharing_enabled", &self.sharing_enabled)
             .finish()
     }
 }
@@ -238,6 +254,11 @@ impl Default for SoulseekConfig {
             server_host: default_server_host(),
             server_port: default_server_port(),
             max_concurrent_downloads: default_max_concurrent_downloads(),
+            share_dirs: Vec::new(),
+            share_hidden: false,
+            upload_slots: default_upload_slots(),
+            upload_speed_limit: None,
+            sharing_enabled: false,
         }
     }
 }
@@ -259,6 +280,10 @@ fn default_server_port() -> u16 {
 }
 
 fn default_max_concurrent_downloads() -> usize {
+    5
+}
+
+fn default_upload_slots() -> u32 {
     5
 }
 

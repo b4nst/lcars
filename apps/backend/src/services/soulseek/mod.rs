@@ -7,13 +7,18 @@
 mod connection;
 mod engine;
 mod events;
+mod listener;
 mod peer;
+mod shares;
 mod types;
+mod uploads;
 
 pub use engine::SoulseekEngine;
 pub use events::SoulseekEvent;
 pub use peer::{BrowseResult, PeerConnection};
+pub use shares::{FileAttributes, ShareIndex, ShareStats, SharedFile};
 pub use types::{
     BrowsedDirectory, BrowsedFile, DownloadRequest, DownloadState, DownloadStatus, FileResult,
-    SearchResult, SearchState, SoulseekStats,
+    SearchResult, SearchState, ShareStatsResponse, SoulseekStats,
 };
+pub use uploads::{UploadQueue, UploadState, UploadStatus};

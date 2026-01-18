@@ -4,7 +4,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     middleware as axum_mw,
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, Result};
 use crate::middleware;
 use crate::services::soulseek::{
-    DownloadRequest as EngineDownloadRequest, DownloadState, SoulseekStats,
+    DownloadRequest as EngineDownloadRequest, DownloadState, ShareStatsResponse, SoulseekStats,
+    UploadState, UploadStatus,
 };
 use crate::AppState;
 
@@ -106,6 +107,80 @@ pub struct StatusResponse {
     pub active_downloads: usize,
     /// Number of completed downloads.
     pub completed_downloads: usize,
+    /// Number of active uploads.
+    pub active_uploads: usize,
+    /// Number of queued uploads.
+    pub queued_uploads: usize,
+    /// Total bytes uploaded (lifetime).
+    pub total_uploaded: u64,
+    /// Number of shared files.
+    pub shared_files: u64,
+    /// Number of shared folders.
+    pub shared_folders: u64,
+}
+
+// =============================================================================
+// Share/Upload Types
+// =============================================================================
+
+/// Response for the rescan operation.
+#[derive(Debug, Serialize)]
+pub struct RescanResponse {
+    /// Status of the rescan.
+    pub status: String,
+}
+
+/// Upload response for API.
+#[derive(Debug, Serialize)]
+pub struct UploadResponse {
+    /// Unique upload ID.
+    pub id: String,
+    /// Username of the peer downloading.
+    pub username: String,
+    /// Filename being uploaded.
+    pub filename: String,
+    /// File size in bytes.
+    pub size: u64,
+    /// Bytes uploaded.
+    pub uploaded: u64,
+    /// Upload speed in bytes/second.
+    pub speed: u64,
+    /// Upload status.
+    pub status: String,
+    /// Progress percentage (0-100).
+    pub progress_percent: f64,
+}
+
+impl From<&UploadState> for UploadResponse {
+    fn from(state: &UploadState) -> Self {
+        Self {
+            id: state.id.clone(),
+            username: state.username.clone(),
+            filename: state.filename.clone(),
+            size: state.size,
+            uploaded: state.uploaded,
+            speed: state.speed,
+            status: match state.status {
+                UploadStatus::Queued => "queued".to_string(),
+                UploadStatus::Transferring => "transferring".to_string(),
+                UploadStatus::Completed => "completed".to_string(),
+                UploadStatus::Failed => "failed".to_string(),
+                UploadStatus::Cancelled => "cancelled".to_string(),
+            },
+            progress_percent: state.progress_percent(),
+        }
+    }
+}
+
+/// Response for uploads list.
+#[derive(Debug, Serialize)]
+pub struct UploadsListResponse {
+    /// Active uploads.
+    pub active: Vec<UploadResponse>,
+    /// Number of queued uploads.
+    pub queued: usize,
+    /// Total bytes uploaded (lifetime).
+    pub total_uploaded: u64,
 }
 
 // =============================================================================
@@ -230,6 +305,12 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/downloads/{id}", get(get_download).delete(cancel_download))
         .route("/browse/{username}", get(browse_user))
         .route("/status", get(get_status))
+        // Share endpoints
+        .route("/shares", get(get_shares))
+        .route("/shares/rescan", post(rescan_shares))
+        // Upload endpoints
+        .route("/uploads", get(list_uploads))
+        .route("/uploads/{id}", delete(cancel_upload))
         .layer(axum_mw::from_fn_with_state(
             state,
             middleware::auth_middleware,
@@ -422,6 +503,11 @@ pub async fn get_status(State(state): State<AppState>) -> Result<Json<StatusResp
             active_searches: 0,
             active_downloads: 0,
             completed_downloads: 0,
+            active_uploads: 0,
+            queued_uploads: 0,
+            total_uploaded: 0,
+            shared_files: 0,
+            shared_folders: 0,
         },
     };
 
@@ -430,6 +516,11 @@ pub async fn get_status(State(state): State<AppState>) -> Result<Json<StatusResp
         active_searches: stats.active_searches,
         active_downloads: stats.active_downloads,
         completed_downloads: stats.completed_downloads,
+        active_uploads: stats.active_uploads,
+        queued_uploads: stats.queued_uploads,
+        total_uploaded: stats.total_uploaded,
+        shared_files: stats.shared_files,
+        shared_folders: stats.shared_folders,
     }))
 }
 
@@ -616,6 +707,98 @@ pub async fn browse_user(
     }))
 }
 
+// =============================================================================
+// Share Handlers
+// =============================================================================
+
+/// GET /api/soulseek/shares
+///
+/// Get information about shared files.
+pub async fn get_shares(State(state): State<AppState>) -> Result<Json<ShareStatsResponse>> {
+    // Get Soulseek engine
+    let engine = state
+        .soulseek_engine()
+        .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?;
+
+    let stats = engine.get_share_stats().await;
+    Ok(Json(stats))
+}
+
+/// POST /api/soulseek/shares/rescan
+///
+/// Rescan share directories and rebuild the index.
+/// Returns 202 Accepted since this may take some time.
+pub async fn rescan_shares(
+    State(state): State<AppState>,
+) -> Result<(StatusCode, Json<RescanResponse>)> {
+    // Get Soulseek engine and clone the Arc for the spawned task
+    let engine = state
+        .soulseek_engine
+        .as_ref()
+        .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?
+        .clone();
+
+    // Spawn the rescan as a background task
+    tokio::spawn(async move {
+        if let Err(e) = engine.rebuild_share_index().await {
+            tracing::error!(error = %e, "Failed to rebuild share index");
+        }
+    });
+
+    tracing::info!("Share rescan initiated");
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(RescanResponse {
+            status: "scanning".to_string(),
+        }),
+    ))
+}
+
+// =============================================================================
+// Upload Handlers
+// =============================================================================
+
+/// GET /api/soulseek/uploads
+///
+/// List all uploads.
+pub async fn list_uploads(State(state): State<AppState>) -> Result<Json<UploadsListResponse>> {
+    // Get Soulseek engine
+    let engine = state
+        .soulseek_engine()
+        .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?;
+
+    let uploads = engine.get_uploads().await;
+    let stats = engine.get_stats().await;
+
+    let active: Vec<UploadResponse> = uploads.iter().map(UploadResponse::from).collect();
+
+    Ok(Json(UploadsListResponse {
+        active,
+        queued: stats.queued_uploads,
+        total_uploaded: stats.total_uploaded,
+    }))
+}
+
+/// DELETE /api/soulseek/uploads/{id}
+///
+/// Cancel an upload.
+pub async fn cancel_upload(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode> {
+    // Get Soulseek engine
+    let engine = state
+        .soulseek_engine()
+        .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?;
+
+    engine.cancel_upload(&id).await?;
+
+    tracing::info!(id = %id, "Cancelled upload");
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -648,6 +831,11 @@ mod tests {
             active_searches: 2,
             active_downloads: 5,
             completed_downloads: 10,
+            active_uploads: 0,
+            queued_uploads: 0,
+            total_uploaded: 0,
+            shared_files: 0,
+            shared_folders: 0,
         };
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"connected\":true"));
