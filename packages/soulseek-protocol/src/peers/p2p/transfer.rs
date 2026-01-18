@@ -13,6 +13,12 @@ pub struct QueueUpload {
     pub file_name: String,
 }
 
+impl QueueUpload {
+    pub fn new(file_name: String) -> Self {
+        Self { file_name }
+    }
+}
+
 impl ParseBytes for QueueUpload {
     fn parse(src: &mut Cursor<&[u8]>) -> std::io::Result<Self> {
         let file_name = read_string(src)?;
@@ -40,10 +46,22 @@ impl ToBytes for QueueUpload {
 
 #[derive(Debug, Serialize)]
 pub struct TransferRequest {
-    direction: u32,
+    pub direction: u32,
     pub ticket: u32,
     pub filename: String,
     pub file_size: Option<u64>,
+}
+
+impl TransferRequest {
+    /// Direction 0 = download from us (peer wants to download)
+    /// Direction 1 = upload to us (peer wants to send us a file)
+    pub fn is_download_request(&self) -> bool {
+        self.direction == 0
+    }
+
+    pub fn is_upload_request(&self) -> bool {
+        self.direction == 1
+    }
 }
 
 impl ParseBytes for TransferRequest {
@@ -99,8 +117,17 @@ impl ToBytes for TransferRequest {
 
 #[derive(Debug, Serialize)]
 pub struct PlaceInQueueReply {
-    filename: String,
-    place: String,
+    pub filename: String,
+    pub place: String,
+}
+
+impl PlaceInQueueReply {
+    pub fn new(filename: String, place: u32) -> Self {
+        Self {
+            filename,
+            place: place.to_string(),
+        }
+    }
 }
 
 #[async_trait]
@@ -161,8 +188,14 @@ impl ToBytes for UploadFailed {
 
 #[derive(Debug, Serialize)]
 pub struct QueueFailed {
-    filename: String,
-    reason: String,
+    pub filename: String,
+    pub reason: String,
+}
+
+impl QueueFailed {
+    pub fn new(filename: String, reason: String) -> Self {
+        Self { filename, reason }
+    }
 }
 
 #[async_trait]
@@ -199,7 +232,7 @@ impl ParseBytes for QueueFailed {
 
 #[derive(Debug, Serialize)]
 pub struct PlaceInQueueRequest {
-    file_name: String,
+    pub file_name: String,
 }
 
 impl ParseBytes for PlaceInQueueRequest {
