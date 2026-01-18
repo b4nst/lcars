@@ -3,6 +3,7 @@
 //! Main service struct that provides Soulseek network functionality
 //! for searching and downloading music files.
 
+use chrono::{DateTime, Utc};
 use rand::Rng;
 use soulseek_protocol::{
     message_common::ConnectionType,
@@ -16,8 +17,9 @@ use soulseek_protocol::{
 };
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -31,8 +33,8 @@ use super::listener::PeerListener;
 use super::peer::PeerConnection;
 use super::shares::ShareIndex;
 use super::types::{
-    BrowsedDirectory, BrowsedFile, DownloadRequest, DownloadState, DownloadStatus, FileResult,
-    SearchResult, SearchState, ShareStatsResponse, SoulseekStats,
+    BrowsedDirectory, BrowsedFile, ConnectionState, DownloadRequest, DownloadState, DownloadStatus,
+    FileResult, SearchResult, SearchState, ShareStatsResponse, SoulseekStats,
 };
 use super::uploads::{UploadQueue, UploadState};
 
@@ -57,12 +59,23 @@ pub struct SoulseekEngine {
     searches: Arc<RwLock<HashMap<u32, SearchState>>>,
     /// Active downloads indexed by ID.
     downloads: Arc<RwLock<HashMap<String, DownloadState>>>,
-    /// Connection status flag.
-    connected: AtomicBool,
     /// Username we logged in with.
     username: Arc<RwLock<Option<String>>>,
     /// Pending peer address requests indexed by username.
     pending_peer_addresses: Arc<RwLock<HashMap<String, PendingPeerAddress>>>,
+    // =========================================================================
+    // Connection state management
+    // =========================================================================
+    /// Current connection state.
+    connection_state: Arc<RwLock<ConnectionState>>,
+    /// When the connection was established (if connected).
+    connected_since: Arc<RwLock<Option<DateTime<Utc>>>>,
+    /// Number of reconnection attempts.
+    reconnect_attempts: AtomicU32,
+    /// Handle to the reconnection task.
+    reconnect_handle: RwLock<Option<JoinHandle<()>>>,
+    /// Handle to the keepalive task.
+    keepalive_handle: RwLock<Option<JoinHandle<()>>>,
     // =========================================================================
     // Sharing fields
     // =========================================================================
@@ -99,9 +112,13 @@ impl SoulseekEngine {
             event_tx,
             searches: Arc::new(RwLock::new(HashMap::new())),
             downloads: Arc::new(RwLock::new(HashMap::new())),
-            connected: AtomicBool::new(false),
             username: Arc::new(RwLock::new(None)),
             pending_peer_addresses: Arc::new(RwLock::new(HashMap::new())),
+            connection_state: Arc::new(RwLock::new(ConnectionState::Disconnected)),
+            connected_since: Arc::new(RwLock::new(None)),
+            reconnect_attempts: AtomicU32::new(0),
+            reconnect_handle: RwLock::new(None),
+            keepalive_handle: RwLock::new(None),
             share_index: Arc::new(RwLock::new(ShareIndex::new())),
             upload_queue: Arc::new(RwLock::new(upload_queue)),
             listener_handle: RwLock::new(None),
@@ -115,8 +132,12 @@ impl SoulseekEngine {
 
     /// Connect to the Soulseek server and authenticate.
     pub async fn connect(self: &Arc<Self>) -> Result<()> {
-        if self.connected.load(Ordering::SeqCst) {
-            return Ok(());
+        // Check if already connected
+        {
+            let state = self.connection_state.read().await;
+            if matches!(*state, ConnectionState::Connected) {
+                return Ok(());
+            }
         }
 
         let username =
@@ -135,9 +156,46 @@ impl SoulseekEngine {
             "Connecting to Soulseek server"
         );
 
-        // Establish connection
-        let (connection, message_rx) =
-            SoulseekConnection::connect(&self.config.server_host, self.config.server_port).await?;
+        // Update state to connecting
+        {
+            let mut state = self.connection_state.write().await;
+            *state = ConnectionState::Connecting;
+        }
+
+        // Establish connection with timeout
+        let connect_result = tokio::time::timeout(
+            Duration::from_secs(self.config.connect_timeout),
+            SoulseekConnection::connect(&self.config.server_host, self.config.server_port),
+        )
+        .await;
+
+        let (connection, message_rx) = match connect_result {
+            Ok(Ok(conn)) => conn,
+            Ok(Err(e)) => {
+                self.set_connection_state(ConnectionState::Failed {
+                    error: e.to_string(),
+                })
+                .await;
+                return Err(e);
+            }
+            Err(_) => {
+                let error = format!(
+                    "Connection timeout after {} seconds",
+                    self.config.connect_timeout
+                );
+                self.set_connection_state(ConnectionState::Failed {
+                    error: error.clone(),
+                })
+                .await;
+                return Err(AppError::Internal(error));
+            }
+        };
+
+        // Update state to authenticating
+        {
+            let mut state = self.connection_state.write().await;
+            *state = ConnectionState::Authenticating;
+        }
 
         // Store connection
         {
@@ -168,12 +226,39 @@ impl SoulseekEngine {
     pub async fn disconnect(&self) -> Result<()> {
         tracing::info!("Disconnecting from Soulseek server");
 
+        // Cancel any ongoing reconnection attempts
+        {
+            let mut handle = self.reconnect_handle.write().await;
+            if let Some(h) = handle.take() {
+                h.abort();
+            }
+        }
+
+        // Cancel keepalive task
+        {
+            let mut handle = self.keepalive_handle.write().await;
+            if let Some(h) = handle.take() {
+                h.abort();
+            }
+        }
+
         let mut conn_guard = self.connection.write().await;
         if let Some(mut connection) = conn_guard.take() {
             connection.shutdown().await;
         }
 
-        self.connected.store(false, Ordering::SeqCst);
+        // Update state
+        self.set_connection_state(ConnectionState::Disconnected)
+            .await;
+
+        // Clear connected_since
+        {
+            let mut since = self.connected_since.write().await;
+            *since = None;
+        }
+
+        // Reset reconnect attempts
+        self.reconnect_attempts.store(0, Ordering::SeqCst);
 
         let _ = self.event_tx.send(SoulseekEvent::Disconnected {
             reason: "User requested disconnect".to_string(),
@@ -188,15 +273,30 @@ impl SoulseekEngine {
     }
 
     /// Check if connected to the server.
-    pub fn is_connected(&self) -> bool {
-        self.connected.load(Ordering::SeqCst)
+    pub async fn is_connected(&self) -> bool {
+        let state = self.connection_state.read().await;
+        matches!(*state, ConnectionState::Connected)
+    }
+
+    /// Get current connection state.
+    pub async fn get_connection_state(&self) -> ConnectionState {
+        self.connection_state.read().await.clone()
+    }
+
+    /// Set connection state and emit event if changed.
+    async fn set_connection_state(&self, new_state: ConnectionState) {
+        let mut state = self.connection_state.write().await;
+        if *state != new_state {
+            tracing::debug!(old = %*state, new = %new_state, "Connection state changed");
+            *state = new_state;
+        }
     }
 
     /// Start a file search.
     ///
     /// Returns the search ticket that can be used to retrieve results.
     pub async fn search(&self, query: &str) -> Result<u32> {
-        if !self.is_connected() {
+        if !self.is_connected().await {
             return Err(AppError::ServiceUnavailable(
                 "Not connected to Soulseek server".to_string(),
             ));
@@ -253,6 +353,15 @@ impl SoulseekEngine {
 
     /// Get statistics about the engine.
     pub async fn get_stats(&self) -> SoulseekStats {
+        let connection_state = self.connection_state.read().await.clone();
+        let connected = matches!(connection_state, ConnectionState::Connected);
+
+        let username = self.username.read().await.clone();
+        let connected_since = *self.connected_since.read().await;
+        let reconnect_attempts = self.reconnect_attempts.load(Ordering::SeqCst);
+
+        let server = format!("{}:{}", self.config.server_host, self.config.server_port);
+
         let searches = self.searches.read().await;
         let active_searches = searches.values().filter(|s| !s.complete).count();
 
@@ -285,7 +394,12 @@ impl SoulseekEngine {
         drop(share_index);
 
         SoulseekStats {
-            connected: self.is_connected(),
+            connection_state,
+            connected,
+            server,
+            username,
+            connected_since,
+            reconnect_attempts,
             active_searches,
             active_downloads,
             completed_downloads,
@@ -305,7 +419,7 @@ impl SoulseekEngine {
     ///
     /// Returns the download ID that can be used to track progress.
     pub async fn download(&self, request: DownloadRequest) -> Result<String> {
-        if !self.is_connected() {
+        if !self.is_connected().await {
             return Err(AppError::ServiceUnavailable(
                 "Not connected to Soulseek server".to_string(),
             ));
@@ -391,7 +505,7 @@ impl SoulseekEngine {
     ///
     /// Connects directly to the peer and retrieves their shared file list.
     pub async fn browse_user(&self, username: &str) -> Result<Vec<BrowsedDirectory>> {
-        if !self.is_connected() {
+        if !self.is_connected().await {
             return Err(AppError::ServiceUnavailable(
                 "Not connected to Soulseek server".to_string(),
             ));
@@ -475,7 +589,7 @@ impl SoulseekEngine {
             .send(SoulseekEvent::ShareIndexUpdated { files, folders });
 
         // If connected, update the server with our new share count
-        if self.is_connected() {
+        if self.is_connected().await {
             self.send_share_count().await?;
         }
 
@@ -517,6 +631,50 @@ impl SoulseekEngine {
             }),
             sharing_enabled: self.config.sharing_enabled,
         }
+    }
+
+    /// Start the keepalive task that periodically sends status updates.
+    ///
+    /// This helps maintain the connection and lets the server know we're still alive.
+    pub async fn start_keepalive(self: &Arc<Self>) {
+        let interval_secs = self.config.keepalive_interval;
+        if interval_secs == 0 {
+            tracing::debug!("Keepalive disabled (interval is 0)");
+            return;
+        }
+
+        let engine = Arc::clone(self);
+        let handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+            interval.tick().await; // Skip the first immediate tick
+
+            loop {
+                interval.tick().await;
+
+                // Check if we're still connected
+                if !engine.is_connected().await {
+                    tracing::debug!("Keepalive stopping: not connected");
+                    break;
+                }
+
+                // Send online status as keepalive
+                // Status 2 = Online
+                if let Err(e) = engine.send_request(ServerRequest::SetOnlineStatus(2)).await {
+                    tracing::warn!(error = %e, "Failed to send keepalive");
+                    // Connection might be dead, the message handler will detect this
+                } else {
+                    tracing::trace!("Keepalive sent");
+                }
+            }
+        });
+
+        // Store the handle
+        {
+            let mut guard = self.keepalive_handle.write().await;
+            *guard = Some(handle);
+        }
+
+        tracing::debug!(interval_secs = interval_secs, "Keepalive task started");
     }
 
     /// Start the peer listener for incoming connections.
@@ -622,17 +780,145 @@ impl SoulseekEngine {
 
     /// Background task to handle incoming messages from the server.
     async fn handle_messages(self: Arc<Self>, mut message_rx: mpsc::Receiver<ServerResponse>) {
+        let mut keepalive_started = false;
+
         while let Some(message) = message_rx.recv().await {
+            // Check for login success to start keepalive
+            if !keepalive_started {
+                if let ServerResponse::LoginResponse(
+                    soulseek_protocol::server::login::LoginResponse::Success { .. },
+                ) = &message
+                {
+                    self.start_keepalive().await;
+                    keepalive_started = true;
+                }
+            }
+
             if let Err(e) = self.handle_message(message).await {
                 tracing::error!(error = %e, "Error handling server message");
             }
         }
 
-        // Connection closed
-        self.connected.store(false, Ordering::SeqCst);
-        let _ = self.event_tx.send(SoulseekEvent::Disconnected {
-            reason: "Connection closed".to_string(),
+        // Connection closed - check if we should auto-reconnect
+        let was_connected = {
+            let state = self.connection_state.read().await;
+            matches!(*state, ConnectionState::Connected)
+        };
+
+        if was_connected {
+            // Clear connected_since
+            {
+                let mut since = self.connected_since.write().await;
+                *since = None;
+            }
+
+            let _ = self.event_tx.send(SoulseekEvent::Disconnected {
+                reason: "Connection closed".to_string(),
+            });
+
+            // Attempt auto-reconnect if enabled
+            if self.config.auto_reconnect {
+                self.start_reconnect().await;
+            } else {
+                self.set_connection_state(ConnectionState::Disconnected)
+                    .await;
+            }
+        }
+    }
+
+    /// Start the auto-reconnect process with exponential backoff.
+    async fn start_reconnect(self: &Arc<Self>) {
+        // Check if we've exceeded max attempts
+        let current_attempt = self.reconnect_attempts.fetch_add(1, Ordering::SeqCst) + 1;
+
+        if let Some(max) = self.config.max_reconnect_attempts {
+            if current_attempt > max {
+                tracing::warn!(
+                    attempts = current_attempt,
+                    max = max,
+                    "Max reconnection attempts reached"
+                );
+                self.set_connection_state(ConnectionState::Failed {
+                    error: format!("Max reconnection attempts ({}) reached", max),
+                })
+                .await;
+                let _ = self.event_tx.send(SoulseekEvent::ConnectionFailed {
+                    error: format!("Max reconnection attempts ({}) reached", max),
+                });
+                return;
+            }
+        }
+
+        // Calculate delay with exponential backoff: 1s, 2s, 4s, 8s, ... up to max
+        let delay_secs = std::cmp::min(
+            2u64.saturating_pow(current_attempt.saturating_sub(1)),
+            self.config.reconnect_delay_max,
+        );
+
+        let next_retry = Utc::now() + chrono::Duration::seconds(delay_secs as i64);
+
+        tracing::info!(
+            attempt = current_attempt,
+            delay_secs = delay_secs,
+            "Scheduling reconnection attempt"
+        );
+
+        // Update state to reconnecting
+        self.set_connection_state(ConnectionState::Reconnecting {
+            attempt: current_attempt,
+            next_retry: Some(next_retry),
+        })
+        .await;
+
+        // Emit event
+        let _ = self.event_tx.send(SoulseekEvent::Reconnecting {
+            attempt: current_attempt,
+            next_retry_secs: delay_secs,
         });
+
+        // Schedule reconnection
+        let engine = Arc::clone(self);
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+            engine.attempt_reconnect().await;
+        });
+
+        // Store the handle
+        {
+            let mut guard = self.reconnect_handle.write().await;
+            *guard = Some(handle);
+        }
+    }
+
+    /// Attempt to reconnect to the server.
+    ///
+    /// This uses `Box::pin` to break the recursive async function cycle
+    /// between `connect` -> `handle_messages` -> `start_reconnect` -> `attempt_reconnect` -> `connect`.
+    fn attempt_reconnect(
+        self: &Arc<Self>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+        Box::pin(async move {
+            tracing::info!("Attempting to reconnect to Soulseek server");
+
+            // Clear old connection
+            {
+                let mut conn_guard = self.connection.write().await;
+                *conn_guard = None;
+            }
+
+            // Attempt connection
+            match self.connect().await {
+                Ok(()) => {
+                    tracing::info!("Reconnection successful");
+                    // connect() handles state updates on success
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Reconnection attempt failed");
+                    // Schedule next attempt
+                    self.start_reconnect().await;
+                }
+            }
+        })
     }
 
     /// Handle a single server message.
@@ -650,8 +936,26 @@ impl SoulseekEngine {
                             ip = %user_ip,
                             "Login successful"
                         );
-                        self.connected.store(true, Ordering::SeqCst);
-                        let _ = self.event_tx.send(SoulseekEvent::Connected);
+
+                        // Update connection state
+                        self.set_connection_state(ConnectionState::Connected).await;
+
+                        // Set connected_since timestamp
+                        {
+                            let mut since = self.connected_since.write().await;
+                            *since = Some(Utc::now());
+                        }
+
+                        // Reset reconnect attempts on successful connection
+                        self.reconnect_attempts.store(0, Ordering::SeqCst);
+
+                        // Get username for event
+                        let username = {
+                            let guard = self.username.read().await;
+                            guard.clone().unwrap_or_default()
+                        };
+
+                        let _ = self.event_tx.send(SoulseekEvent::Connected { username });
 
                         // Set our status to online and configure distributed network
                         self.send_request(ServerRequest::SetOnlineStatus(2)).await?;
@@ -665,6 +969,10 @@ impl SoulseekEngine {
                     }
                     soulseek_protocol::server::login::LoginResponse::Failure { reason } => {
                         tracing::warn!(reason = %reason, "Login failed");
+                        self.set_connection_state(ConnectionState::Failed {
+                            error: reason.clone(),
+                        })
+                        .await;
                         let _ = self.event_tx.send(SoulseekEvent::LoginFailed {
                             reason: reason.clone(),
                         });
@@ -682,7 +990,10 @@ impl SoulseekEngine {
 
             ServerResponse::KickedFromServer => {
                 tracing::warn!("Kicked from server");
-                self.connected.store(false, Ordering::SeqCst);
+                self.set_connection_state(ConnectionState::Failed {
+                    error: "Kicked from server".to_string(),
+                })
+                .await;
                 let _ = self.event_tx.send(SoulseekEvent::Disconnected {
                     reason: "Kicked from server".to_string(),
                 });
@@ -880,7 +1191,7 @@ mod tests {
         assert!(engine.is_ok());
 
         let engine = engine.unwrap();
-        assert!(!engine.is_connected());
+        assert!(!engine.is_connected().await);
     }
 
     #[tokio::test]

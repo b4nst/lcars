@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, Result};
 use crate::middleware;
 use crate::services::soulseek::{
-    DownloadRequest as EngineDownloadRequest, DownloadState, ShareStatsResponse, SoulseekStats,
-    UploadState, UploadStatus,
+    ConnectionState, DownloadRequest as EngineDownloadRequest, DownloadState, ShareStatsResponse,
+    SoulseekStats, UploadState, UploadStatus,
 };
 use crate::AppState;
 
@@ -99,8 +99,20 @@ pub struct SearchResultsResponse {
 /// Status response for the Soulseek engine.
 #[derive(Debug, Serialize)]
 pub struct StatusResponse {
-    /// Whether connected to the Soulseek server.
+    /// Current connection state.
+    pub connection_state: ConnectionState,
+    /// Whether connected to the Soulseek server (convenience field).
     pub connected: bool,
+    /// Server address.
+    pub server: String,
+    /// Logged in username (if connected).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    /// When the connection was established (ISO 8601 timestamp).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connected_since: Option<String>,
+    /// Number of reconnection attempts (if reconnecting).
+    pub reconnect_attempts: u32,
     /// Number of active searches.
     pub active_searches: usize,
     /// Number of active downloads.
@@ -343,7 +355,7 @@ pub async fn start_search(
         .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?;
 
     // Check if connected
-    if !engine.is_connected() {
+    if !engine.is_connected().await {
         return Err(AppError::ServiceUnavailable(
             "Soulseek is not connected".to_string(),
         ));
@@ -499,7 +511,12 @@ pub async fn get_status(State(state): State<AppState>) -> Result<Json<StatusResp
     let stats = match state.soulseek_engine() {
         Some(engine) => engine.get_stats().await,
         None => SoulseekStats {
+            connection_state: ConnectionState::Disconnected,
             connected: false,
+            server: "server.slsknet.org:2242".to_string(),
+            username: None,
+            connected_since: None,
+            reconnect_attempts: 0,
             active_searches: 0,
             active_downloads: 0,
             completed_downloads: 0,
@@ -512,7 +529,12 @@ pub async fn get_status(State(state): State<AppState>) -> Result<Json<StatusResp
     };
 
     Ok(Json(StatusResponse {
+        connection_state: stats.connection_state,
         connected: stats.connected,
+        server: stats.server,
+        username: stats.username,
+        connected_since: stats.connected_since.map(|dt| dt.to_rfc3339()),
+        reconnect_attempts: stats.reconnect_attempts,
         active_searches: stats.active_searches,
         active_downloads: stats.active_downloads,
         completed_downloads: stats.completed_downloads,
@@ -550,7 +572,7 @@ pub async fn start_download(
         .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?;
 
     // Check if connected
-    if !engine.is_connected() {
+    if !engine.is_connected().await {
         return Err(AppError::ServiceUnavailable(
             "Soulseek is not connected".to_string(),
         ));
@@ -664,7 +686,7 @@ pub async fn browse_user(
         .ok_or_else(|| AppError::ServiceUnavailable("Soulseek is not configured".to_string()))?;
 
     // Check if connected
-    if !engine.is_connected() {
+    if !engine.is_connected().await {
         return Err(AppError::ServiceUnavailable(
             "Soulseek is not connected".to_string(),
         ));
@@ -827,7 +849,12 @@ mod tests {
     #[test]
     fn test_status_response_serialize() {
         let response = StatusResponse {
+            connection_state: ConnectionState::Connected,
             connected: true,
+            server: "server.slsknet.org:2242".to_string(),
+            username: Some("test_user".to_string()),
+            connected_since: Some("2024-01-01T00:00:00Z".to_string()),
+            reconnect_attempts: 0,
             active_searches: 2,
             active_downloads: 5,
             completed_downloads: 10,
@@ -840,5 +867,6 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"connected\":true"));
         assert!(json.contains("\"active_searches\":2"));
+        assert!(json.contains("\"state\":\"connected\""));
     }
 }
