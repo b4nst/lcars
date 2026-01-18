@@ -41,6 +41,9 @@ tower-http = { version = "0.5", features = ["cors"] }
 soulseek-protocol = { path = "../../packages/soulseek-protocol" }
 bytes = "1.5"
 uuid = { version = "1.19.0", features = ["v4"] }
+lofty = "0.22"
+walkdir = "2.5"
+chrono = { version = "0.4", features = ["serde"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

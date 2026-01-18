@@ -135,6 +135,33 @@ pub struct SoulseekStats {
     pub active_downloads: usize,
     /// Number of completed downloads.
     pub completed_downloads: usize,
+    /// Number of active uploads.
+    pub active_uploads: usize,
+    /// Number of queued uploads.
+    pub queued_uploads: usize,
+    /// Total bytes uploaded (lifetime).
+    pub total_uploaded: u64,
+    /// Number of shared files.
+    pub shared_files: u64,
+    /// Number of shared folders.
+    pub shared_folders: u64,
+}
+
+/// Statistics about shared files (for API response).
+#[derive(Debug, Clone, Serialize)]
+pub struct ShareStatsResponse {
+    /// Directories being shared.
+    pub directories: Vec<String>,
+    /// Total number of shared files.
+    pub total_files: u64,
+    /// Total number of shared folders.
+    pub total_folders: u64,
+    /// Total size of shared files in bytes.
+    pub total_size: u64,
+    /// When the index was last updated (ISO 8601 string).
+    pub last_indexed: Option<String>,
+    /// Whether sharing is enabled.
+    pub sharing_enabled: bool,
 }
 
 /// Status of a Soulseek download.

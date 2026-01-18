@@ -11,7 +11,7 @@ use soulseek_protocol::{
     },
     server::{
         login::LoginRequest, peer::RequestConnectionToPeer, request::ServerRequest,
-        response::ServerResponse, search::SearchRequest,
+        response::ServerResponse, search::SearchRequest, shares::SharedFolderAndFiles,
     },
 };
 use std::collections::HashMap;
@@ -19,6 +19,7 @@ use std::net::Ipv4Addr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::config::SoulseekConfig;
@@ -26,11 +27,14 @@ use crate::error::{AppError, Result};
 
 use super::connection::SoulseekConnection;
 use super::events::SoulseekEvent;
+use super::listener::PeerListener;
 use super::peer::PeerConnection;
+use super::shares::ShareIndex;
 use super::types::{
     BrowsedDirectory, BrowsedFile, DownloadRequest, DownloadState, DownloadStatus, FileResult,
-    SearchResult, SearchState, SoulseekStats,
+    SearchResult, SearchState, ShareStatsResponse, SoulseekStats,
 };
+use super::uploads::{UploadQueue, UploadState};
 
 /// Pending peer address request - waiting for server to provide IP/port.
 struct PendingPeerAddress {
@@ -59,6 +63,15 @@ pub struct SoulseekEngine {
     username: Arc<RwLock<Option<String>>>,
     /// Pending peer address requests indexed by username.
     pending_peer_addresses: Arc<RwLock<HashMap<String, PendingPeerAddress>>>,
+    // =========================================================================
+    // Sharing fields
+    // =========================================================================
+    /// Index of shared files.
+    share_index: Arc<RwLock<ShareIndex>>,
+    /// Upload queue and state.
+    upload_queue: Arc<RwLock<UploadQueue>>,
+    /// Handle to the peer listener task.
+    listener_handle: RwLock<Option<JoinHandle<()>>>,
 }
 
 impl SoulseekEngine {
@@ -78,6 +91,8 @@ impl SoulseekEngine {
 
         let (event_tx, _) = broadcast::channel(100);
 
+        let upload_queue = UploadQueue::new(config.upload_slots);
+
         Ok(Self {
             config,
             connection: Arc::new(RwLock::new(None)),
@@ -87,6 +102,9 @@ impl SoulseekEngine {
             connected: AtomicBool::new(false),
             username: Arc::new(RwLock::new(None)),
             pending_peer_addresses: Arc::new(RwLock::new(HashMap::new())),
+            share_index: Arc::new(RwLock::new(ShareIndex::new())),
+            upload_queue: Arc::new(RwLock::new(upload_queue)),
+            listener_handle: RwLock::new(None),
         })
     }
 
@@ -255,11 +273,27 @@ impl SoulseekEngine {
             .filter(|d| d.status == DownloadStatus::Completed)
             .count();
 
+        let upload_queue = self.upload_queue.read().await;
+        let active_uploads = upload_queue.active_count();
+        let queued_uploads = upload_queue.pending_count();
+        let total_uploaded = upload_queue.total_uploaded();
+        drop(upload_queue);
+
+        let share_index = self.share_index.read().await;
+        let shared_files = share_index.file_count();
+        let shared_folders = share_index.folder_count();
+        drop(share_index);
+
         SoulseekStats {
             connected: self.is_connected(),
             active_searches,
             active_downloads,
             completed_downloads,
+            active_uploads,
+            queued_uploads,
+            total_uploaded,
+            shared_files,
+            shared_folders,
         }
     }
 
@@ -409,6 +443,137 @@ impl SoulseekEngine {
         Ok(convert_shared_directories(shares))
     }
 
+    // =========================================================================
+    // Share methods
+    // =========================================================================
+
+    /// Rebuild the share index by scanning configured directories.
+    pub async fn rebuild_share_index(&self) -> Result<()> {
+        if !self.config.sharing_enabled {
+            tracing::debug!("Sharing not enabled, skipping index rebuild");
+            return Ok(());
+        }
+
+        tracing::info!(
+            dirs = ?self.config.share_dirs,
+            "Rebuilding share index"
+        );
+
+        let new_index = ShareIndex::scan(&self.config.share_dirs, self.config.share_hidden).await?;
+
+        let files = new_index.file_count();
+        let folders = new_index.folder_count();
+
+        {
+            let mut index = self.share_index.write().await;
+            *index = new_index;
+        }
+
+        // Emit event
+        let _ = self
+            .event_tx
+            .send(SoulseekEvent::ShareIndexUpdated { files, folders });
+
+        // If connected, update the server with our new share count
+        if self.is_connected() {
+            self.send_share_count().await?;
+        }
+
+        Ok(())
+    }
+
+    /// Send our share count to the server.
+    async fn send_share_count(&self) -> Result<()> {
+        let index = self.share_index.read().await;
+        let folders = index.folder_count() as u32;
+        let files = index.file_count() as u32;
+        drop(index);
+
+        self.send_request(ServerRequest::SharedFolderAndFiles(SharedFolderAndFiles {
+            dirs: folders,
+            files,
+        }))
+        .await
+    }
+
+    /// Get share statistics.
+    pub async fn get_share_stats(&self) -> ShareStatsResponse {
+        let index = self.share_index.read().await;
+        let stats = index.stats();
+
+        ShareStatsResponse {
+            directories: self
+                .config
+                .share_dirs
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect(),
+            total_files: stats.total_files,
+            total_folders: stats.total_folders,
+            total_size: stats.total_size,
+            last_indexed: stats.last_indexed.map(|_| {
+                // Convert to approximate ISO 8601
+                chrono::Utc::now().to_rfc3339()
+            }),
+            sharing_enabled: self.config.sharing_enabled,
+        }
+    }
+
+    /// Start the peer listener for incoming connections.
+    pub async fn start_listener(self: &Arc<Self>) -> Result<()> {
+        if !self.config.sharing_enabled {
+            tracing::debug!("Sharing not enabled, not starting peer listener");
+            return Ok(());
+        }
+
+        let username = {
+            let guard = self.username.read().await;
+            guard.clone().unwrap_or_else(|| "anonymous".to_string())
+        };
+
+        let listener = PeerListener::bind(
+            self.config.listen_port,
+            Arc::clone(&self.share_index),
+            Arc::clone(&self.upload_queue),
+            username,
+            0, // TODO: Calculate from upload_speed_limit
+        )
+        .await?;
+
+        let handle = tokio::spawn(async move {
+            listener.run().await;
+        });
+
+        {
+            let mut guard = self.listener_handle.write().await;
+            *guard = Some(handle);
+        }
+
+        tracing::info!(port = self.config.listen_port, "Peer listener started");
+        Ok(())
+    }
+
+    // =========================================================================
+    // Upload methods
+    // =========================================================================
+
+    /// Get all uploads (active and recent).
+    pub async fn get_uploads(&self) -> Vec<UploadState> {
+        let queue = self.upload_queue.read().await;
+        queue.get_active().into_iter().cloned().collect()
+    }
+
+    /// Cancel an upload.
+    pub async fn cancel_upload(&self, id: &str) -> Result<()> {
+        let mut queue = self.upload_queue.write().await;
+        if queue.cancel(id) {
+            tracing::debug!(id = %id, "Cancelled upload");
+            Ok(())
+        } else {
+            Err(AppError::NotFound(format!("Upload {} not found", id)))
+        }
+    }
+
     /// Get the address (IP and port) of a peer from the server.
     async fn get_peer_address(&self, username: &str) -> Result<(Ipv4Addr, u32)> {
         // Create a channel to receive the address
@@ -494,6 +659,9 @@ impl SoulseekEngine {
                             self.config.listen_port as u32,
                         ))
                         .await?;
+
+                        // Report share count to server
+                        self.send_share_count().await?;
                     }
                     soulseek_protocol::server::login::LoginResponse::Failure { reason } => {
                         tracing::warn!(reason = %reason, "Login failed");

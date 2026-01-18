@@ -3,8 +3,14 @@ use tokio::io::{AsyncWrite, AsyncWriteExt, BufWriter};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SharedFolderAndFiles {
-    pub(crate) dirs: u32,
-    pub(crate) files: u32,
+    pub dirs: u32,
+    pub files: u32,
+}
+
+impl SharedFolderAndFiles {
+    pub fn new(dirs: u32, files: u32) -> Self {
+        Self { dirs, files }
+    }
 }
 
 #[async_trait]
