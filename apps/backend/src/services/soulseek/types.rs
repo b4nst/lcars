@@ -1,7 +1,51 @@
 //! Type definitions for Soulseek service.
 
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::time::Instant;
+
+/// Connection state for the Soulseek server.
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum ConnectionState {
+    /// Not connected to the server.
+    #[default]
+    Disconnected,
+    /// Attempting to connect.
+    Connecting,
+    /// Authenticating with the server.
+    Authenticating,
+    /// Successfully connected and authenticated.
+    Connected,
+    /// Attempting to reconnect after a disconnect.
+    Reconnecting {
+        /// Number of reconnection attempts so far.
+        attempt: u32,
+        /// When the next retry will be attempted.
+        #[serde(with = "chrono::serde::ts_seconds_option")]
+        next_retry: Option<DateTime<Utc>>,
+    },
+    /// Connection failed permanently.
+    Failed {
+        /// Error message describing the failure.
+        error: String,
+    },
+}
+
+impl std::fmt::Display for ConnectionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionState::Disconnected => write!(f, "disconnected"),
+            ConnectionState::Connecting => write!(f, "connecting"),
+            ConnectionState::Authenticating => write!(f, "authenticating"),
+            ConnectionState::Connected => write!(f, "connected"),
+            ConnectionState::Reconnecting { attempt, .. } => {
+                write!(f, "reconnecting (attempt {})", attempt)
+            }
+            ConnectionState::Failed { error } => write!(f, "failed: {}", error),
+        }
+    }
+}
 
 /// State of an active search.
 #[derive(Debug)]
@@ -127,8 +171,19 @@ impl FileResult {
 /// Statistics about the Soulseek engine.
 #[derive(Debug, Clone, Serialize)]
 pub struct SoulseekStats {
-    /// Whether connected to the server.
+    /// Current connection state.
+    pub connection_state: ConnectionState,
+    /// Whether connected to the server (convenience field).
     pub connected: bool,
+    /// Server address.
+    pub server: String,
+    /// Logged in username (if connected).
+    pub username: Option<String>,
+    /// When the connection was established.
+    #[serde(with = "chrono::serde::ts_seconds_option")]
+    pub connected_since: Option<DateTime<Utc>>,
+    /// Number of reconnection attempts (if reconnecting).
+    pub reconnect_attempts: u32,
     /// Number of active searches.
     pub active_searches: usize,
     /// Number of active downloads.

@@ -9,11 +9,34 @@ use super::types::FileResult;
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SoulseekEvent {
-    /// Successfully connected to the Soulseek server.
-    Connected,
+    // =========================================================================
+    // Connection events
+    // =========================================================================
+    /// Successfully connected and logged in to the Soulseek server.
+    Connected {
+        /// The username that was used to log in.
+        username: String,
+    },
 
     /// Disconnected from the Soulseek server.
-    Disconnected { reason: String },
+    Disconnected {
+        /// Reason for disconnection.
+        reason: String,
+    },
+
+    /// Attempting to reconnect to the server.
+    Reconnecting {
+        /// Current reconnection attempt number.
+        attempt: u32,
+        /// Seconds until next retry.
+        next_retry_secs: u64,
+    },
+
+    /// Connection failed permanently (will not retry).
+    ConnectionFailed {
+        /// Error describing why the connection failed.
+        error: String,
+    },
 
     /// Login attempt failed.
     LoginFailed { reason: String },

@@ -18,7 +18,7 @@ pub use events::SoulseekEvent;
 pub use peer::{BrowseResult, PeerConnection};
 pub use shares::{FileAttributes, ShareIndex, ShareStats, SharedFile};
 pub use types::{
-    BrowsedDirectory, BrowsedFile, DownloadRequest, DownloadState, DownloadStatus, FileResult,
-    SearchResult, SearchState, ShareStatsResponse, SoulseekStats,
+    BrowsedDirectory, BrowsedFile, ConnectionState, DownloadRequest, DownloadState, DownloadStatus,
+    FileResult, SearchResult, SearchState, ShareStatsResponse, SoulseekStats,
 };
 pub use uploads::{UploadQueue, UploadState, UploadStatus};
