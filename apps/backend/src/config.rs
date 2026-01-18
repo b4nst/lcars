@@ -222,6 +222,17 @@ pub struct SoulseekConfig {
     pub upload_speed_limit: Option<u64>,
     #[serde(default)]
     pub sharing_enabled: bool,
+    // Connection management
+    #[serde(default = "default_auto_reconnect")]
+    pub auto_reconnect: bool,
+    #[serde(default = "default_connect_timeout")]
+    pub connect_timeout: u64,
+    #[serde(default)]
+    pub max_reconnect_attempts: Option<u32>,
+    #[serde(default = "default_reconnect_delay_max")]
+    pub reconnect_delay_max: u64,
+    #[serde(default = "default_keepalive_interval")]
+    pub keepalive_interval: u64,
 }
 
 // Custom Debug implementation to avoid exposing password
@@ -240,6 +251,11 @@ impl std::fmt::Debug for SoulseekConfig {
             .field("upload_slots", &self.upload_slots)
             .field("upload_speed_limit", &self.upload_speed_limit)
             .field("sharing_enabled", &self.sharing_enabled)
+            .field("auto_reconnect", &self.auto_reconnect)
+            .field("connect_timeout", &self.connect_timeout)
+            .field("max_reconnect_attempts", &self.max_reconnect_attempts)
+            .field("reconnect_delay_max", &self.reconnect_delay_max)
+            .field("keepalive_interval", &self.keepalive_interval)
             .finish()
     }
 }
@@ -259,6 +275,11 @@ impl Default for SoulseekConfig {
             upload_slots: default_upload_slots(),
             upload_speed_limit: None,
             sharing_enabled: false,
+            auto_reconnect: default_auto_reconnect(),
+            connect_timeout: default_connect_timeout(),
+            max_reconnect_attempts: None,
+            reconnect_delay_max: default_reconnect_delay_max(),
+            keepalive_interval: default_keepalive_interval(),
         }
     }
 }
@@ -285,6 +306,22 @@ fn default_max_concurrent_downloads() -> usize {
 
 fn default_upload_slots() -> u32 {
     5
+}
+
+fn default_auto_reconnect() -> bool {
+    true
+}
+
+fn default_connect_timeout() -> u64 {
+    30
+}
+
+fn default_reconnect_delay_max() -> u64 {
+    60
+}
+
+fn default_keepalive_interval() -> u64 {
+    60
 }
 
 /// Storage configuration
