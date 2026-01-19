@@ -709,3 +709,168 @@ async fn update_album_status(app: &TestApp, album_id: i64, status: &str) {
     )
     .expect("Failed to update album status");
 }
+
+// =============================================================================
+// Unified Search/Download Tests (Soulseek integration)
+// =============================================================================
+
+#[tokio::test]
+async fn test_unified_search_album_without_sources() {
+    let app = TestApp::new().await;
+    let (_user_id, token) = app.create_user().await;
+
+    let artist_id =
+        seed_test_artist(&app, "Pink Floyd", "5441c29d-3602-4898-b1a1-b77fa23b8e50").await;
+    let album_id = seed_test_album(&app, artist_id, "The Dark Side of the Moon").await;
+
+    let (name, value) = app.auth_header(&token);
+    let response = app
+        .server()
+        .post(&format!("/api/music/albums/{}/unified-search", album_id))
+        .add_header(name, value)
+        .json(&serde_json::json!({
+            "sources": ["soulseek"]
+        }))
+        .await;
+
+    // Returns 200 with empty results when Soulseek is not configured
+    response.assert_status_ok();
+    let body: serde_json::Value = response.json();
+
+    // Should return album info with empty results
+    assert_eq!(body["album_id"], album_id);
+    assert_eq!(body["album"], "The Dark Side of the Moon");
+    assert_eq!(body["artist"], "Pink Floyd");
+    assert!(body["soulseek_results"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_unified_search_album_nonexistent() {
+    let app = TestApp::new().await;
+    let (_user_id, token) = app.create_user().await;
+
+    let (name, value) = app.auth_header(&token);
+    let response = app
+        .server()
+        .post("/api/music/albums/99999/unified-search")
+        .add_header(name, value)
+        .json(&serde_json::json!({
+            "sources": ["soulseek"]
+        }))
+        .await;
+
+    response.assert_status_not_found();
+}
+
+#[tokio::test]
+async fn test_unified_search_album_unauthenticated() {
+    let app = TestApp::new().await;
+
+    let response = app
+        .server()
+        .post("/api/music/albums/1/unified-search")
+        .json(&serde_json::json!({
+            "sources": ["soulseek"]
+        }))
+        .await;
+
+    response.assert_status_unauthorized();
+}
+
+#[tokio::test]
+async fn test_unified_download_album_without_sources() {
+    let app = TestApp::new().await;
+    let (_user_id, token) = app.create_user().await;
+
+    let artist_id =
+        seed_test_artist(&app, "Pink Floyd", "5441c29d-3602-4898-b1a1-b77fa23b8e50").await;
+    let album_id = seed_test_album(&app, artist_id, "The Dark Side of the Moon").await;
+
+    let (name, value) = app.auth_header(&token);
+    let response = app
+        .server()
+        .post(&format!("/api/music/albums/{}/unified-download", album_id))
+        .add_header(name, value)
+        .json(&serde_json::json!({
+            "source": "soulseek",
+            "username": "testuser",
+            "files": [
+                {
+                    "filename": "/Music/Pink Floyd/DSOTM/01 - Speak to Me.flac",
+                    "size": 10000000
+                }
+            ]
+        }))
+        .await;
+
+    // Should return 503 Service Unavailable when Soulseek is not configured
+    response.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn test_unified_download_album_invalid_source() {
+    let app = TestApp::new().await;
+    let (_user_id, token) = app.create_user().await;
+
+    let artist_id =
+        seed_test_artist(&app, "Pink Floyd", "5441c29d-3602-4898-b1a1-b77fa23b8e50").await;
+    let album_id = seed_test_album(&app, artist_id, "The Dark Side of the Moon").await;
+
+    let (name, value) = app.auth_header(&token);
+    let response = app
+        .server()
+        .post(&format!("/api/music/albums/{}/unified-download", album_id))
+        .add_header(name, value)
+        .json(&serde_json::json!({
+            "source": "invalid_source",
+            "username": "testuser",
+            "files": []
+        }))
+        .await;
+
+    // Should return 400 Bad Request for invalid source
+    response.assert_status_bad_request();
+}
+
+#[tokio::test]
+async fn test_unified_download_album_nonexistent() {
+    let app = TestApp::new().await;
+    let (_user_id, token) = app.create_user().await;
+
+    let (name, value) = app.auth_header(&token);
+    let response = app
+        .server()
+        .post("/api/music/albums/99999/unified-download")
+        .add_header(name, value)
+        .json(&serde_json::json!({
+            "source": "soulseek",
+            "username": "testuser",
+            "files": [
+                {
+                    "filename": "/Music/test.flac",
+                    "size": 1000
+                }
+            ]
+        }))
+        .await;
+
+    // Returns 503 when Soulseek is not configured (checked before album lookup)
+    response.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn test_unified_download_album_unauthenticated() {
+    let app = TestApp::new().await;
+
+    let response = app
+        .server()
+        .post("/api/music/albums/1/unified-download")
+        .json(&serde_json::json!({
+            "source": "soulseek",
+            "username": "testuser",
+            "files": []
+        }))
+        .await;
+
+    response.assert_status_unauthorized();
+}
