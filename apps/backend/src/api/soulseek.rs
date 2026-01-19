@@ -9,6 +9,16 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+// =============================================================================
+// Constants
+// =============================================================================
+
+/// Maximum number of search results to return per request.
+const MAX_SEARCH_RESULTS: usize = 1000;
+
+/// Default limit for paginated search results.
+const DEFAULT_SEARCH_LIMIT: usize = 50;
+
 use crate::error::{AppError, Result};
 use crate::middleware;
 use crate::services::soulseek::{
@@ -464,7 +474,10 @@ pub async fn get_search_results(
 
     // Apply pagination
     let offset = query.offset.unwrap_or(0);
-    let limit = query.limit.unwrap_or(100).min(1000); // Max 1000 results per request
+    let limit = query
+        .limit
+        .unwrap_or(DEFAULT_SEARCH_LIMIT)
+        .min(MAX_SEARCH_RESULTS);
 
     let results: Vec<FileResultResponse> = all_files.into_iter().skip(offset).take(limit).collect();
 

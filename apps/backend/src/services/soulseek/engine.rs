@@ -4,6 +4,20 @@
 //! for searching and downloading music files.
 
 use chrono::{DateTime, Utc};
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+/// Size of the internal message channel buffer.
+const MESSAGE_CHANNEL_SIZE: usize = 100;
+
+/// Timeout for peer address resolution from server.
+const PEER_ADDRESS_TIMEOUT_SECS: u64 = 10;
+
+/// Timeout for waiting for browse response from a peer.
+const BROWSE_TIMEOUT_SECS: u64 = 30;
+
 use rand::Rng;
 use soulseek_protocol::{
     message_common::ConnectionType,
@@ -102,7 +116,7 @@ impl SoulseekEngine {
             ));
         }
 
-        let (event_tx, _) = broadcast::channel(100);
+        let (event_tx, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
 
         let upload_queue = UploadQueue::new(config.upload_slots);
 
@@ -535,7 +549,7 @@ impl SoulseekEngine {
         peer_conn.request_shares().await?;
 
         // Wait for shares reply with timeout
-        let shares = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let shares = tokio::time::timeout(Duration::from_secs(BROWSE_TIMEOUT_SECS), async {
             while let Some(msg) = message_rx.recv().await {
                 if let PeerResponse::SharesReply(dirs) = msg {
                     return Ok(dirs);
@@ -748,8 +762,18 @@ impl SoulseekEngine {
             .await?;
 
         // Wait for response with timeout
-        tokio::time::timeout(std::time::Duration::from_secs(10), rx)
-            .await
+        let result = tokio::time::timeout(Duration::from_secs(PEER_ADDRESS_TIMEOUT_SECS), rx).await;
+
+        // Clean up pending request on timeout or error
+        match &result {
+            Ok(Ok(_)) => {}
+            _ => {
+                let mut pending = self.pending_peer_addresses.write().await;
+                pending.remove(username);
+            }
+        }
+
+        result
             .map_err(|_| {
                 AppError::Internal(format!("Timeout waiting for peer address for {}", username))
             })?
