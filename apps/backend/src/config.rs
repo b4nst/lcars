@@ -27,6 +27,8 @@ pub struct Config {
     pub storage: StorageConfig,
     #[serde(default)]
     pub scheduler: SchedulerConfig,
+    #[serde(default)]
+    pub music: MusicConfig,
 }
 
 /// Server configuration
@@ -480,6 +482,74 @@ fn default_check_new_releases() -> String {
 
 fn default_cleanup_completed() -> String {
     "0 0 * * * *".to_string()
+}
+
+/// Music acquisition configuration
+#[derive(Debug, Clone, Deserialize)]
+pub struct MusicConfig {
+    /// Search source order preference (options: "indexers", "soulseek")
+    #[serde(default = "default_search_sources")]
+    pub search_sources: Vec<String>,
+    /// Auto-download source preference ("indexers", "soulseek", or "any")
+    #[serde(default = "default_auto_download_source")]
+    pub auto_download_source: String,
+    /// Quality preferences for search result matching
+    #[serde(default)]
+    pub quality: MusicQualityConfig,
+}
+
+impl Default for MusicConfig {
+    fn default() -> Self {
+        Self {
+            search_sources: default_search_sources(),
+            auto_download_source: default_auto_download_source(),
+            quality: MusicQualityConfig::default(),
+        }
+    }
+}
+
+fn default_search_sources() -> Vec<String> {
+    vec!["indexers".to_string(), "soulseek".to_string()]
+}
+
+fn default_auto_download_source() -> String {
+    "indexers".to_string()
+}
+
+/// Quality preferences for music downloads
+#[derive(Debug, Clone, Deserialize)]
+pub struct MusicQualityConfig {
+    /// Preferred audio formats in priority order (e.g., ["flac", "mp3 320"])
+    #[serde(default = "default_preferred_formats")]
+    pub preferred_formats: Vec<String>,
+    /// Minimum acceptable bitrate in kbps
+    #[serde(default = "default_min_bitrate")]
+    pub min_bitrate: u32,
+    /// Prefer complete albums over partial downloads
+    #[serde(default = "default_prefer_complete_albums")]
+    pub prefer_complete_albums: bool,
+}
+
+impl Default for MusicQualityConfig {
+    fn default() -> Self {
+        Self {
+            preferred_formats: default_preferred_formats(),
+            min_bitrate: default_min_bitrate(),
+            prefer_complete_albums: default_prefer_complete_albums(),
+        }
+    }
+}
+
+fn default_preferred_formats() -> Vec<String> {
+    vec!["flac".to_string(), "mp3".to_string()]
+}
+
+fn default_min_bitrate() -> u32 {
+    256
+}
+
+fn default_prefer_complete_albums() -> bool {
+    true
 }
 
 impl Config {
