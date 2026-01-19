@@ -58,6 +58,7 @@ impl TestApp {
             soulseek: Default::default(),
             storage: Default::default(),
             scheduler: Default::default(),
+            music: Default::default(),
         };
 
         // Create auth service with test secret

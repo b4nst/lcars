@@ -1,5 +1,7 @@
 //! Music API endpoints for managing artists, albums, and tracks.
 
+use std::collections::HashMap;
+
 use axum::{
     extract::{Path, Query, State},
     routing::{get, post, put},
@@ -7,10 +9,14 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::config::MusicQualityConfig;
 use crate::db::models::{Album, AlbumStatus, Artist, MediaStatus, MediaType, Track};
 use crate::error::{AppError, Result};
 use crate::middleware;
 use crate::services::indexer::{MediaSearchType, Release, SearchQuery as IndexerSearchQuery};
+use crate::services::soulseek::{
+    FileResult as SoulseekFileResultType, SearchResult as SoulseekSearchResult,
+};
 use crate::services::Claims;
 use crate::AppState;
 
@@ -124,11 +130,113 @@ pub struct DeleteAlbumQuery {
     pub delete_files: Option<bool>,
 }
 
-/// Request body for downloading a release.
+/// Request body for downloading a release (torrent).
 #[derive(Debug, Deserialize)]
 pub struct DownloadRequest {
     /// Direct magnet link.
     pub magnet: String,
+}
+
+/// Request body for searching releases with multiple sources.
+#[derive(Debug, Deserialize)]
+pub struct UnifiedSearchRequest {
+    /// Sources to search (options: "indexers", "soulseek", or "all").
+    /// If not specified, uses the configured default sources.
+    pub sources: Option<Vec<String>>,
+    /// Optional custom search query (defaults to "Artist Album").
+    pub query: Option<String>,
+}
+
+/// Request body for downloading from multiple sources.
+#[derive(Debug, Deserialize)]
+pub struct UnifiedDownloadRequest {
+    /// Download source: "torrent" or "soulseek".
+    #[serde(default = "default_source")]
+    pub source: String,
+    /// Magnet link (required for torrent downloads).
+    pub magnet: Option<String>,
+    /// Soulseek username (required for soulseek downloads).
+    pub username: Option<String>,
+    /// Soulseek files to download (required for soulseek downloads).
+    /// Each item should contain: filename, size.
+    pub files: Option<Vec<SoulseekFileDownload>>,
+}
+
+fn default_source() -> String {
+    "torrent".to_string()
+}
+
+/// File to download from Soulseek.
+#[derive(Debug, Deserialize)]
+pub struct SoulseekFileDownload {
+    /// Full path of the file on the peer's system.
+    pub filename: String,
+    /// File size in bytes.
+    pub size: u64,
+}
+
+/// A Soulseek search result for an album.
+#[derive(Debug, Clone, Serialize)]
+pub struct SoulseekAlbumResult {
+    /// Source identifier.
+    pub source: String,
+    /// Username of the peer sharing the files.
+    pub username: String,
+    /// Common folder path for the album.
+    pub folder: String,
+    /// Files in the album.
+    pub files: Vec<SoulseekFileResult>,
+    /// Quality information.
+    pub quality: SoulseekQuality,
+    /// Whether the user has free upload slots.
+    pub user_slots_free: bool,
+    /// User's average upload speed in bytes/second.
+    pub user_speed: u32,
+    /// User's queue length.
+    pub queue_length: u32,
+    /// Quality score (higher is better).
+    pub score: u32,
+}
+
+/// A file in a Soulseek album result.
+#[derive(Debug, Clone, Serialize)]
+pub struct SoulseekFileResult {
+    /// Full path of the file.
+    pub filename: String,
+    /// File size in bytes.
+    pub size: u64,
+    /// File extension.
+    pub extension: String,
+    /// Bitrate in kbps (if available).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bitrate: Option<u32>,
+    /// Duration in seconds (if available).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<u32>,
+}
+
+/// Quality information for a Soulseek result.
+#[derive(Debug, Clone, Serialize)]
+pub struct SoulseekQuality {
+    /// Primary audio format (e.g., "flac", "mp3").
+    pub format: String,
+    /// Average bitrate in kbps.
+    pub bitrate: u32,
+}
+
+/// Response for unified search.
+#[derive(Debug, Serialize)]
+pub struct UnifiedSearchResponse {
+    /// Album ID that was searched.
+    pub album_id: i64,
+    /// Artist name.
+    pub artist: String,
+    /// Album title.
+    pub album: String,
+    /// Indexer/torrent results.
+    pub indexer_results: Vec<Release>,
+    /// Soulseek results (grouped by user/folder).
+    pub soulseek_results: Vec<SoulseekAlbumResult>,
 }
 
 /// Success response for operations without specific data.
@@ -200,6 +308,9 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/albums/:id/search", post(search_album_releases))
         .route("/albums/:id/download", post(download_album))
         .route("/albums/:id/refresh", post(refresh_album))
+        // Unified search/download endpoints (supports both indexers and Soulseek)
+        .route("/albums/:id/unified-search", post(unified_search_album))
+        .route("/albums/:id/unified-download", post(unified_download_album))
         // Tracks
         .route("/tracks", get(list_tracks))
         .route("/tracks/:id", put(update_track))
@@ -1148,6 +1259,317 @@ pub async fn search_album_releases(
     Ok(Json(releases))
 }
 
+/// POST /api/music/albums/:id/unified-search
+///
+/// Searches both indexers and Soulseek for releases of this album.
+pub async fn unified_search_album(
+    State(state): State<AppState>,
+    Path(album_id): Path<i64>,
+    Json(body): Json<UnifiedSearchRequest>,
+) -> Result<Json<UnifiedSearchResponse>> {
+    let db = state.db.lock().await;
+
+    // Get album and artist details
+    let (album_title, artist_name, total_tracks): (String, String, Option<i32>) = db
+        .query_row(
+            r#"
+            SELECT a.title, ar.name, a.total_tracks
+            FROM albums a
+            JOIN artists ar ON a.artist_id = ar.id
+            WHERE a.id = ?1
+            "#,
+            [album_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                AppError::NotFound("Album not found".to_string())
+            }
+            _ => AppError::Sqlite(e),
+        })?;
+
+    drop(db); // Release the lock before async operations
+
+    // Determine which sources to search
+    let sources = body
+        .sources
+        .unwrap_or_else(|| state.config.music.search_sources.clone());
+
+    // Build search query
+    let search_term = body
+        .query
+        .unwrap_or_else(|| format!("{} {}", artist_name, album_title));
+
+    let mut indexer_results = Vec::new();
+    let mut soulseek_results = Vec::new();
+
+    // Search indexers if requested
+    if sources.iter().any(|s| s == "indexers" || s == "all") {
+        let query = IndexerSearchQuery::new(&search_term).media_type(MediaSearchType::MusicAlbum);
+        let indexer_manager = state.indexer_manager();
+        match indexer_manager.search(&query).await {
+            Ok(releases) => {
+                indexer_results = releases;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to search indexers");
+            }
+        }
+    }
+
+    // Search Soulseek if requested and available
+    if sources.iter().any(|s| s == "soulseek" || s == "all") {
+        if let Some(engine) = state.soulseek_engine() {
+            if engine.is_connected().await {
+                match engine.search(&search_term).await {
+                    Ok(ticket) => {
+                        // Wait briefly for results to come in
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+                        if let Some(search_state) = engine.get_search_results(ticket).await {
+                            // Group results by user/folder and score them
+                            soulseek_results = group_and_score_soulseek_results(
+                                &search_state.results,
+                                total_tracks.unwrap_or(0) as usize,
+                                &state.config.music.quality,
+                            );
+                        }
+
+                        // Cancel the search after we have results
+                        let _ = engine.cancel_search(ticket).await;
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to search Soulseek");
+                    }
+                }
+            } else {
+                tracing::debug!("Soulseek not connected, skipping search");
+            }
+        }
+    }
+
+    tracing::info!(
+        album_id = album_id,
+        artist = %artist_name,
+        album = %album_title,
+        indexer_results = indexer_results.len(),
+        soulseek_results = soulseek_results.len(),
+        "Unified search completed"
+    );
+
+    Ok(Json(UnifiedSearchResponse {
+        album_id,
+        artist: artist_name,
+        album: album_title,
+        indexer_results,
+        soulseek_results,
+    }))
+}
+
+/// POST /api/music/albums/:id/unified-download
+///
+/// Starts downloading a release for this album from either torrent or Soulseek.
+pub async fn unified_download_album(
+    State(state): State<AppState>,
+    Path(album_id): Path<i64>,
+    Json(body): Json<UnifiedDownloadRequest>,
+) -> Result<Json<DownloadInfo>> {
+    match body.source.as_str() {
+        "torrent" => {
+            // Validate magnet link
+            let magnet = body.magnet.ok_or_else(|| {
+                AppError::BadRequest("Magnet link required for torrent downloads".to_string())
+            })?;
+
+            if !magnet.starts_with("magnet:?") {
+                return Err(AppError::BadRequest(
+                    "Invalid magnet link format".to_string(),
+                ));
+            }
+
+            // Get torrent engine
+            let torrent_engine = state
+                .torrent_engine()
+                .ok_or_else(|| AppError::Internal("Torrent engine not available".to_string()))?;
+
+            let db = state.db.lock().await;
+
+            // Get album info
+            let (title,): (String,) = db
+                .query_row(
+                    "SELECT title FROM albums WHERE id = ?1",
+                    [album_id],
+                    |row| Ok((row.get(0)?,)),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        AppError::NotFound("Album not found".to_string())
+                    }
+                    _ => AppError::Sqlite(e),
+                })?;
+
+            drop(db);
+
+            // Add magnet to torrent engine
+            let media_ref = crate::services::torrent::MediaRef {
+                media_type: MediaType::Album,
+                media_id: album_id,
+            };
+
+            let info_hash = torrent_engine.add_magnet(&magnet, media_ref).await?;
+
+            // Create download record and update album status
+            let db = state.db.lock().await;
+
+            db.execute(
+                r#"
+                INSERT INTO downloads (source_type, source_id, name, media_type, media_id, source_uri, status)
+                VALUES ('torrent', ?1, ?2, 'album', ?3, ?4, 'downloading')
+                "#,
+                rusqlite::params![info_hash, title, album_id, magnet],
+            )?;
+
+            let download_id = db.last_insert_rowid();
+
+            db.execute(
+                "UPDATE albums SET status = 'downloading', updated_at = datetime('now') WHERE id = ?1",
+                [album_id],
+            )?;
+
+            tracing::info!(
+                album_id = album_id,
+                info_hash = %info_hash,
+                download_id = download_id,
+                source = "torrent",
+                "Started album download via unified endpoint"
+            );
+
+            Ok(Json(DownloadInfo {
+                id: download_id,
+                info_hash,
+                name: title,
+                status: "downloading".to_string(),
+            }))
+        }
+        "soulseek" => {
+            // Validate Soulseek parameters
+            let username = body.username.ok_or_else(|| {
+                AppError::BadRequest("Username required for Soulseek downloads".to_string())
+            })?;
+
+            let files = body.files.ok_or_else(|| {
+                AppError::BadRequest("Files required for Soulseek downloads".to_string())
+            })?;
+
+            if files.is_empty() {
+                return Err(AppError::BadRequest(
+                    "At least one file required for download".to_string(),
+                ));
+            }
+
+            // Get Soulseek engine
+            let engine = state.soulseek_engine().ok_or_else(|| {
+                AppError::ServiceUnavailable("Soulseek not configured".to_string())
+            })?;
+
+            if !engine.is_connected().await {
+                return Err(AppError::ServiceUnavailable(
+                    "Soulseek is not connected".to_string(),
+                ));
+            }
+
+            let db = state.db.lock().await;
+
+            // Get album info
+            let (title,): (String,) = db
+                .query_row(
+                    "SELECT title FROM albums WHERE id = ?1",
+                    [album_id],
+                    |row| Ok((row.get(0)?,)),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        AppError::NotFound("Album not found".to_string())
+                    }
+                    _ => AppError::Sqlite(e),
+                })?;
+
+            drop(db);
+
+            // Start downloads for each file
+            let mut first_download_id = String::new();
+            for (i, file) in files.iter().enumerate() {
+                let request = crate::services::soulseek::DownloadRequest {
+                    username: username.clone(),
+                    filename: file.filename.clone(),
+                    size: file.size,
+                    media_type: Some("album".to_string()),
+                    media_id: Some(album_id),
+                };
+
+                match engine.download(request).await {
+                    Ok(id) => {
+                        if i == 0 {
+                            first_download_id = id.clone();
+                        }
+
+                        // Create download record in database
+                        let db = state.db.lock().await;
+                        let source_uri = format!("soulseek://{}/{}", username, file.filename);
+                        let file_name = file
+                            .filename
+                            .rsplit(['/', '\\'])
+                            .next()
+                            .unwrap_or(&file.filename);
+
+                        db.execute(
+                            r#"
+                            INSERT INTO downloads (source_type, source_id, name, media_type, media_id, source_uri, status, size_bytes, soulseek_username, soulseek_filename)
+                            VALUES ('soulseek', ?1, ?2, 'album', ?3, ?4, 'downloading', ?5, ?6, ?7)
+                            "#,
+                            rusqlite::params![id, file_name, album_id, source_uri, file.size, username, file.filename],
+                        )?;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            username = %username,
+                            filename = %file.filename,
+                            error = %e,
+                            "Failed to start Soulseek download for file"
+                        );
+                    }
+                }
+            }
+
+            // Update album status
+            let db = state.db.lock().await;
+            db.execute(
+                "UPDATE albums SET status = 'downloading', updated_at = datetime('now') WHERE id = ?1",
+                [album_id],
+            )?;
+
+            tracing::info!(
+                album_id = album_id,
+                username = %username,
+                files = files.len(),
+                source = "soulseek",
+                "Started album download via unified endpoint"
+            );
+
+            Ok(Json(DownloadInfo {
+                id: 0, // Soulseek downloads don't have a single DB ID
+                info_hash: first_download_id,
+                name: title,
+                status: "downloading".to_string(),
+            }))
+        }
+        _ => Err(AppError::BadRequest(format!(
+            "Invalid source: {}. Must be 'torrent' or 'soulseek'",
+            body.source
+        ))),
+    }
+}
+
 /// POST /api/music/albums/:id/download
 ///
 /// Starts downloading a release for this album.
@@ -1624,6 +2046,191 @@ pub async fn download_track(
 // =============================================================================
 // Helpers
 // =============================================================================
+
+/// Groups Soulseek search results by user/folder and scores them for quality.
+fn group_and_score_soulseek_results(
+    results: &[SoulseekSearchResult],
+    expected_track_count: usize,
+    quality_prefs: &MusicQualityConfig,
+) -> Vec<SoulseekAlbumResult> {
+    // Group files by username and folder
+    let mut grouped: HashMap<
+        (String, String),
+        Vec<(&SoulseekSearchResult, &SoulseekFileResultType)>,
+    > = HashMap::new();
+
+    for result in results {
+        for file in &result.files {
+            // Extract folder from filename
+            let folder = extract_folder(&file.filename);
+            let key = (result.username.clone(), folder);
+            grouped.entry(key).or_default().push((result, file));
+        }
+    }
+
+    // Convert to album results and score them
+    let mut album_results: Vec<SoulseekAlbumResult> = grouped
+        .into_iter()
+        .filter_map(|((username, folder), files)| {
+            // Only include groups with audio files
+            let audio_files: Vec<_> = files
+                .iter()
+                .filter(|(_, f)| is_audio_extension(&f.extension))
+                .collect();
+
+            if audio_files.is_empty() {
+                return None;
+            }
+
+            // Get user stats from first result
+            let (first_result, _) = audio_files[0];
+
+            // Determine primary format and average bitrate
+            let format_counts: HashMap<String, usize> =
+                audio_files.iter().fold(HashMap::new(), |mut acc, (_, f)| {
+                    *acc.entry(f.extension.to_lowercase()).or_default() += 1;
+                    acc
+                });
+
+            let primary_format = format_counts
+                .into_iter()
+                .max_by_key(|(_, count)| *count)
+                .map(|(fmt, _)| fmt)
+                .unwrap_or_else(|| "unknown".to_string());
+
+            let avg_bitrate = {
+                let bitrates: Vec<u32> =
+                    audio_files.iter().filter_map(|(_, f)| f.bitrate).collect();
+                if bitrates.is_empty() {
+                    // Estimate based on format
+                    match primary_format.as_str() {
+                        "flac" => 1000,
+                        "mp3" => 320,
+                        _ => 256,
+                    }
+                } else {
+                    bitrates.iter().sum::<u32>() / bitrates.len() as u32
+                }
+            };
+
+            // Build file list
+            let file_results: Vec<SoulseekFileResult> = audio_files
+                .iter()
+                .map(|(_, f)| SoulseekFileResult {
+                    filename: f.filename.clone(),
+                    size: f.size,
+                    extension: f.extension.clone(),
+                    bitrate: f.bitrate,
+                    duration: f.duration,
+                })
+                .collect();
+
+            // Calculate quality score
+            let score = score_soulseek_result(
+                &primary_format,
+                avg_bitrate,
+                file_results.len(),
+                expected_track_count,
+                first_result.has_free_slot,
+                first_result.average_speed,
+                quality_prefs,
+            );
+
+            Some(SoulseekAlbumResult {
+                source: "soulseek".to_string(),
+                username,
+                folder,
+                files: file_results,
+                quality: SoulseekQuality {
+                    format: primary_format,
+                    bitrate: avg_bitrate,
+                },
+                user_slots_free: first_result.has_free_slot,
+                user_speed: first_result.average_speed,
+                queue_length: first_result.queue_length,
+                score,
+            })
+        })
+        .collect();
+
+    // Sort by score (highest first)
+    album_results.sort_by(|a, b| b.score.cmp(&a.score));
+
+    album_results
+}
+
+/// Extracts the folder path from a full file path.
+fn extract_folder(path: &str) -> String {
+    // Handle both forward and backslashes
+    let normalized = path.replace('\\', "/");
+    if let Some(last_slash) = normalized.rfind('/') {
+        normalized[..last_slash].to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// Checks if a file extension is a common audio format.
+fn is_audio_extension(ext: &str) -> bool {
+    matches!(
+        ext.to_lowercase().as_str(),
+        "flac" | "mp3" | "m4a" | "aac" | "ogg" | "opus" | "wav" | "wma" | "ape" | "alac"
+    )
+}
+
+/// Scores a Soulseek result based on quality preferences.
+fn score_soulseek_result(
+    format: &str,
+    bitrate: u32,
+    file_count: usize,
+    expected_track_count: usize,
+    slots_free: bool,
+    upload_speed: u32,
+    prefs: &MusicQualityConfig,
+) -> u32 {
+    let mut score: u32 = 0;
+
+    // Format match bonus (max 100 points)
+    let format_lower = format.to_lowercase();
+    for (i, pref_format) in prefs.preferred_formats.iter().enumerate() {
+        if format_lower == pref_format.to_lowercase()
+            || (pref_format.to_lowercase().starts_with(&format_lower))
+        {
+            // Higher score for formats earlier in the preference list
+            score += 100 - (i as u32 * 20).min(80);
+            break;
+        }
+    }
+
+    // Lossless format bonus
+    if matches!(format_lower.as_str(), "flac" | "wav" | "ape" | "alac") {
+        score += 50;
+    }
+
+    // Bitrate bonus (max 50 points)
+    if bitrate >= prefs.min_bitrate {
+        score += 25;
+        // Extra points for higher bitrates
+        score += ((bitrate as f64 / 1000.0) * 10.0).min(25.0) as u32;
+    }
+
+    // Complete album bonus (max 50 points)
+    if prefs.prefer_complete_albums && expected_track_count > 0 {
+        let completeness = (file_count as f64 / expected_track_count as f64).min(1.0);
+        score += (completeness * 50.0) as u32;
+    }
+
+    // Availability bonus (max 30 points)
+    if slots_free {
+        score += 20;
+    }
+
+    // Speed bonus (max 10 points)
+    // 1MB/s = 1,000,000 bytes/s gets full points
+    score += ((upload_speed as f64 / 100000.0) as u32).min(10);
+
+    score
+}
 
 /// Maps a database row to an Artist struct.
 fn map_artist_row(row: &rusqlite::Row) -> rusqlite::Result<Artist> {
