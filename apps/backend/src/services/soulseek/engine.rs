@@ -1215,4 +1215,105 @@ mod tests {
         assert!(!stats.connected);
         assert_eq!(stats.active_searches, 0);
     }
+
+    #[tokio::test]
+    async fn test_get_connection_state() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let state = engine.get_connection_state().await;
+        assert_eq!(state, ConnectionState::Disconnected);
+    }
+
+    #[tokio::test]
+    async fn test_get_search_results_nonexistent() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let result = engine.get_search_results(12345).await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cancel_search_nonexistent() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let result = engine.cancel_search(12345).await;
+        // Should return error for nonexistent search
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_download_nonexistent() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let result = engine.get_download("nonexistent-id").await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_downloads_empty() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let downloads = engine.get_downloads().await;
+        assert!(downloads.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_cancel_download_nonexistent() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let result = engine.cancel_download("nonexistent-id").await;
+        // Should return error for nonexistent download
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_download_without_connection() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let result = engine
+            .download(DownloadRequest {
+                username: "testuser".to_string(),
+                filename: "/Music/test.flac".to_string(),
+                size: 1000,
+                media_type: None,
+                media_id: None,
+            })
+            .await;
+        // Should fail without connection
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_browse_user_without_connection() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let result = engine.browse_user("someuser").await;
+        // Should fail without connection
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_uploads_empty() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let uploads = engine.get_uploads().await;
+        assert!(uploads.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_cancel_upload_nonexistent() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let result = engine.cancel_upload("nonexistent-id").await;
+        // Should return error for nonexistent upload
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_share_stats() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let stats = engine.get_share_stats().await;
+        // With default config (no share dirs), should be empty
+        assert!(stats.directories.is_empty());
+        assert_eq!(stats.total_files, 0);
+        assert_eq!(stats.total_folders, 0);
+    }
+
+    #[tokio::test]
+    async fn test_subscribe() {
+        let engine = SoulseekEngine::new(test_config()).await.unwrap();
+        let _rx = engine.subscribe();
+        // Should be able to subscribe multiple times
+        let _rx2 = engine.subscribe();
+    }
 }

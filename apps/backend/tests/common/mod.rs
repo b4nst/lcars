@@ -5,7 +5,7 @@
 
 use axum::{
     middleware as axum_mw,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     Router,
 };
 use axum_test::TestServer;
@@ -244,6 +244,42 @@ impl TestApp {
         // Build downloads routes (authenticated)
         let downloads_routes = backend::api::downloads::router(state.clone());
 
+        // Build soulseek routes (authenticated)
+        // Note: Using :param syntax instead of {param} for axum-test compatibility
+        let soulseek_routes = Router::new()
+            .route("/search", post(backend::api::soulseek::start_search))
+            .route(
+                "/search/:ticket",
+                get(backend::api::soulseek::get_search_results)
+                    .delete(backend::api::soulseek::cancel_search),
+            )
+            .route("/download", post(backend::api::soulseek::start_download))
+            .route("/downloads", get(backend::api::soulseek::list_downloads))
+            .route(
+                "/downloads/:id",
+                get(backend::api::soulseek::get_download)
+                    .delete(backend::api::soulseek::cancel_download),
+            )
+            .route(
+                "/browse/:username",
+                get(backend::api::soulseek::browse_user),
+            )
+            .route("/status", get(backend::api::soulseek::get_status))
+            .route("/shares", get(backend::api::soulseek::get_shares))
+            .route(
+                "/shares/rescan",
+                post(backend::api::soulseek::rescan_shares),
+            )
+            .route("/uploads", get(backend::api::soulseek::list_uploads))
+            .route(
+                "/uploads/:id",
+                delete(backend::api::soulseek::cancel_upload),
+            )
+            .layer(axum_mw::from_fn_with_state(
+                state.clone(),
+                backend::middleware::auth_middleware,
+            ));
+
         // Build search routes (authenticated)
         let search_routes = Router::new()
             .route(
@@ -268,6 +304,7 @@ impl TestApp {
             .nest("/api/tv", tv_routes)
             .nest("/api/music", music_routes)
             .nest("/api/downloads", downloads_routes)
+            .nest("/api/soulseek", soulseek_routes)
             .nest("/api/search", search_routes)
             .nest("/api/system", system_routes)
             .route("/api/ws", get(backend::api::ws::ws_handler))
