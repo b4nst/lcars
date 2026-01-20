@@ -296,7 +296,14 @@ impl ShareIndex {
     }
 
     /// Get a file by its virtual path.
+    ///
+    /// Returns None for invalid paths (including path traversal attempts).
     pub fn get_file(&self, virtual_path: &str) -> Option<&SharedFile> {
+        // Reject paths with traversal attempts
+        if virtual_path.contains("..") {
+            return None;
+        }
+
         // Normalize path separators
         let normalized = virtual_path.replace('/', "\\");
         self.files_by_path.get(&normalized)

@@ -353,8 +353,9 @@ impl PeerListener {
         let dirs = index.to_protocol_directories();
         drop(index);
 
-        let inner = &mut vec![];
-        let mut writer = BufWriter::new(inner);
+        // Write to BufWriter and flush to get buffer contents
+        let mut data = Vec::new();
+        let mut writer = BufWriter::new(&mut data);
 
         PeerRequest::SharesReply(dirs)
             .write_to_buf(&mut writer)
@@ -364,10 +365,10 @@ impl PeerListener {
         writer
             .flush()
             .await
-            .map_err(|e| AppError::Internal(format!("Failed to flush shares reply: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to flush buffer: {}", e)))?;
 
         stream
-            .write_all(writer.buffer())
+            .write_all(&data)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to send shares reply: {}", e)))?;
 
@@ -433,8 +434,8 @@ impl PeerListener {
         };
 
         // Send reply
-        let inner = &mut vec![];
-        let mut writer = BufWriter::new(inner);
+        let mut data = Vec::new();
+        let mut writer = BufWriter::new(&mut data);
 
         PeerRequest::TransferReply(reply)
             .write_to_buf(&mut writer)
@@ -446,10 +447,10 @@ impl PeerListener {
         writer
             .flush()
             .await
-            .map_err(|e| AppError::Internal(format!("Failed to flush transfer reply: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to flush buffer: {}", e)))?;
 
         stream
-            .write_all(writer.buffer())
+            .write_all(&data)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to send transfer reply: {}", e)))?;
 
@@ -487,8 +488,8 @@ impl PeerListener {
             drop(index);
 
             // Send queue failed
-            let inner = &mut vec![];
-            let mut writer = BufWriter::new(inner);
+            let mut data = Vec::new();
+            let mut writer = BufWriter::new(&mut data);
 
             PeerRequest::QueueFailed(QueueFailed::new(
                 filename.to_string(),
@@ -501,10 +502,10 @@ impl PeerListener {
             writer
                 .flush()
                 .await
-                .map_err(|e| AppError::Internal(format!("Failed to flush queue failed: {}", e)))?;
+                .map_err(|e| AppError::Internal(format!("Failed to flush buffer: {}", e)))?;
 
             stream
-                .write_all(writer.buffer())
+                .write_all(&data)
                 .await
                 .map_err(|e| AppError::Internal(format!("Failed to send queue failed: {}", e)))?;
 
@@ -525,8 +526,8 @@ impl PeerListener {
         let position = queue.get_queue_position(username, filename).unwrap_or(0);
         drop(queue);
 
-        let inner = &mut vec![];
-        let mut writer = BufWriter::new(inner);
+        let mut data = Vec::new();
+        let mut writer = BufWriter::new(&mut data);
 
         PeerRequest::PlaceInQueueReply(PlaceInQueueReply::new(filename.to_string(), position))
             .write_to_buf(&mut writer)
@@ -535,11 +536,12 @@ impl PeerListener {
                 AppError::Internal(format!("Failed to serialize place in queue reply: {}", e))
             })?;
 
-        writer.flush().await.map_err(|e| {
-            AppError::Internal(format!("Failed to flush place in queue reply: {}", e))
-        })?;
+        writer
+            .flush()
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to flush buffer: {}", e)))?;
 
-        stream.write_all(writer.buffer()).await.map_err(|e| {
+        stream.write_all(&data).await.map_err(|e| {
             AppError::Internal(format!("Failed to send place in queue reply: {}", e))
         })?;
 
