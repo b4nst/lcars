@@ -136,11 +136,7 @@ pub async fn page(State(state): State<AppState>, cookies: CookieJar) -> impl Int
                 let path = root.to_string_lossy().to_string();
                 let available = mount.available().await;
                 let free_space = if available {
-                    mount
-                        .free_space()
-                        .await
-                        .ok()
-                        .map(|bytes| format_size(bytes))
+                    mount.free_space().await.ok().map(format_size)
                 } else {
                     None
                 };
@@ -205,4 +201,3 @@ fn format_duration(seconds: u64) -> String {
         format!("{}m", minutes)
     }
 }
-
