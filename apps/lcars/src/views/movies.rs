@@ -344,7 +344,6 @@ pub async fn search_releases(
     }
 }
 
-
 /// Add a movie via form submission - calls API handler
 pub async fn add_movie(
     State(state): State<AppState>,

@@ -48,6 +48,8 @@ impl TestApp {
                 host: "127.0.0.1".to_string(),
                 port: 0,
                 jwt_secret: Some("test-jwt-secret-for-integration-tests".to_string()),
+                secure_cookies: false,
+                cors_origins: Vec::new(),
             },
             database: lcars::config::DatabaseConfig {
                 path: ":memory:".into(),

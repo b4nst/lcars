@@ -18,7 +18,10 @@ use crate::api::downloads::{
 use crate::db::models::DownloadStatus;
 use crate::AppState;
 
-use super::{auth, utils::{format_size, format_speed}};
+use super::{
+    auth,
+    utils::{format_size, format_speed},
+};
 
 // =============================================================================
 // Templates
@@ -281,4 +284,3 @@ pub async fn cancel(
         .into_response(),
     }
 }
-

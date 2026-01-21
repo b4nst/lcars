@@ -185,4 +185,3 @@ pub async fn status_stream(State(state): State<AppState>, cookies: CookieJar) ->
         )
         .into_response()
 }
-
