@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-use backend::{api, config, db, middleware, services, static_files, views, AppState};
+use lcars::{api, config, db, middleware, services, static_files, views, AppState};
 
 use config::Config;
 use services::{
@@ -24,7 +24,7 @@ fn init_tracing() {
     // RUST_LOG environment variable controls log levels
     // Default: debug for our crate, info for axum, warn for dependencies
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("backend=debug,tower_http=debug,axum=info,warn"));
+        .unwrap_or_else(|_| EnvFilter::new("lcars=debug,tower_http=debug,axum=info,warn"));
 
     tracing_subscriber::registry()
         .with(filter)
@@ -435,7 +435,7 @@ async fn main() {
         // Static assets (CSS, JS, fonts)
         .route("/static/*path", get(static_files::serve_static))
         // Health check
-        .route("/health", get(backend::health_check))
+        .route("/health", get(lcars::health_check))
         // HTMX HTML routes (served at root)
         .merge(html_routes)
         // JSON API routes (under /api)

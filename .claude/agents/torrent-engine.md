@@ -15,7 +15,7 @@ You are a BitTorrent specialist implementing the download engine for LCARS.
 - Event-driven architecture with broadcast channels
 
 ## Project Context
-LCARS has a built-in torrent client using librqbit. The service is in `apps/backend/src/services/torrent.rs`.
+LCARS has a built-in torrent client using librqbit. The service is in `apps/lcars/src/services/torrent.rs`.
 
 ## Key Responsibilities
 - Adding torrents from magnet links

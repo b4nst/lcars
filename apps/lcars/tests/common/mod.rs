@@ -13,8 +13,8 @@ use rusqlite::Connection;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use backend::services::{AuthService, IndexerManager};
-use backend::{config::Config, db, AppState};
+use lcars::services::{AuthService, IndexerManager};
+use lcars::{config::Config, db, AppState};
 
 /// Test application wrapper around axum_test::TestServer.
 ///
@@ -44,12 +44,12 @@ impl TestApp {
 
         // Create test configuration
         let config = Config {
-            server: backend::config::ServerConfig {
+            server: lcars::config::ServerConfig {
                 host: "127.0.0.1".to_string(),
                 port: 0,
                 jwt_secret: Some("test-jwt-secret-for-integration-tests".to_string()),
             },
-            database: backend::config::DatabaseConfig {
+            database: lcars::config::DatabaseConfig {
                 path: ":memory:".into(),
             },
             tmdb: Default::default(),
@@ -108,19 +108,19 @@ impl TestApp {
     fn build_router(state: AppState) -> Router {
         // Build auth routes (public)
         let auth_routes = Router::new()
-            .route("/login", post(backend::api::auth::login))
+            .route("/login", post(lcars::api::auth::login))
             .route(
                 "/logout",
-                post(backend::api::auth::logout).layer(axum_mw::from_fn_with_state(
+                post(lcars::api::auth::logout).layer(axum_mw::from_fn_with_state(
                     state.clone(),
-                    backend::middleware::auth_middleware,
+                    lcars::middleware::auth_middleware,
                 )),
             )
             .route(
                 "/me",
-                get(backend::api::auth::me).layer(axum_mw::from_fn_with_state(
+                get(lcars::api::auth::me).layer(axum_mw::from_fn_with_state(
                     state.clone(),
-                    backend::middleware::auth_middleware,
+                    lcars::middleware::auth_middleware,
                 )),
             );
 
@@ -128,52 +128,48 @@ impl TestApp {
         let user_routes = Router::new()
             .route(
                 "/",
-                get(backend::api::users::list_users).post(backend::api::users::create_user),
+                get(lcars::api::users::list_users).post(lcars::api::users::create_user),
             )
             .route(
                 "/:id",
-                put(backend::api::users::update_user).delete(backend::api::users::delete_user),
+                put(lcars::api::users::update_user).delete(lcars::api::users::delete_user),
             )
-            .layer(axum_mw::from_fn(backend::middleware::require_admin))
+            .layer(axum_mw::from_fn(lcars::middleware::require_admin))
             .layer(axum_mw::from_fn_with_state(
                 state.clone(),
-                backend::middleware::auth_middleware,
+                lcars::middleware::auth_middleware,
             ));
 
         // Build system routes - some authenticated, some admin only
         let system_auth_routes = Router::new()
-            .route("/status", get(backend::api::system::get_system_status))
-            .route("/activity", get(backend::api::system::get_activity))
+            .route("/status", get(lcars::api::system::get_system_status))
+            .route("/activity", get(lcars::api::system::get_activity))
             .layer(axum_mw::from_fn_with_state(
                 state.clone(),
-                backend::middleware::auth_middleware,
+                lcars::middleware::auth_middleware,
             ));
 
         let system_admin_routes = Router::new()
-            .route("/jobs", get(backend::api::system::list_jobs))
-            .route("/jobs/:name/run", post(backend::api::system::trigger_job))
+            .route("/jobs", get(lcars::api::system::list_jobs))
+            .route("/jobs/:name/run", post(lcars::api::system::trigger_job))
             .route(
                 "/indexers",
-                get(backend::api::system::list_indexers).post(backend::api::system::create_indexer),
+                get(lcars::api::system::list_indexers).post(lcars::api::system::create_indexer),
             )
             .route(
                 "/indexers/:id",
-                put(backend::api::system::update_indexer)
-                    .delete(backend::api::system::delete_indexer),
+                put(lcars::api::system::update_indexer).delete(lcars::api::system::delete_indexer),
             )
-            .route(
-                "/indexers/:id/test",
-                post(backend::api::system::test_indexer),
-            )
-            .route("/storage/mounts", get(backend::api::system::list_mounts))
+            .route("/indexers/:id/test", post(lcars::api::system::test_indexer))
+            .route("/storage/mounts", get(lcars::api::system::list_mounts))
             .route(
                 "/storage/mounts/:name/test",
-                post(backend::api::system::test_mount),
+                post(lcars::api::system::test_mount),
             )
-            .layer(axum_mw::from_fn(backend::middleware::require_admin))
+            .layer(axum_mw::from_fn(lcars::middleware::require_admin))
             .layer(axum_mw::from_fn_with_state(
                 state.clone(),
-                backend::middleware::auth_middleware,
+                lcars::middleware::auth_middleware,
             ));
 
         let system_routes = Router::new()
@@ -184,23 +180,20 @@ impl TestApp {
         let movies_routes = Router::new()
             .route(
                 "/",
-                get(backend::api::movies::list_movies).post(backend::api::movies::add_movie),
+                get(lcars::api::movies::list_movies).post(lcars::api::movies::add_movie),
             )
             .route(
                 "/:id",
-                get(backend::api::movies::get_movie)
-                    .put(backend::api::movies::update_movie)
-                    .delete(backend::api::movies::delete_movie),
+                get(lcars::api::movies::get_movie)
+                    .put(lcars::api::movies::update_movie)
+                    .delete(lcars::api::movies::delete_movie),
             )
-            .route("/:id/search", post(backend::api::movies::search_releases))
-            .route(
-                "/:id/download",
-                post(backend::api::movies::download_release),
-            )
-            .route("/:id/refresh", post(backend::api::movies::refresh_metadata))
+            .route("/:id/search", post(lcars::api::movies::search_releases))
+            .route("/:id/download", post(lcars::api::movies::download_release))
+            .route("/:id/refresh", post(lcars::api::movies::refresh_metadata))
             .layer(axum_mw::from_fn_with_state(
                 state.clone(),
-                backend::middleware::auth_middleware,
+                lcars::middleware::auth_middleware,
             ));
 
         // Build TV shows routes (authenticated)
@@ -208,96 +201,87 @@ impl TestApp {
         let tv_routes = Router::new()
             .route(
                 "/",
-                get(backend::api::tv::list_shows).post(backend::api::tv::add_show),
+                get(lcars::api::tv::list_shows).post(lcars::api::tv::add_show),
             )
             .route(
                 "/:id",
-                get(backend::api::tv::get_show)
-                    .put(backend::api::tv::update_show)
-                    .delete(backend::api::tv::delete_show),
+                get(lcars::api::tv::get_show)
+                    .put(lcars::api::tv::update_show)
+                    .delete(lcars::api::tv::delete_show),
             )
-            .route("/:id/refresh", post(backend::api::tv::refresh_metadata))
+            .route("/:id/refresh", post(lcars::api::tv::refresh_metadata))
             .route(
                 "/:id/season/:season",
-                get(backend::api::tv::get_season).put(backend::api::tv::update_season),
+                get(lcars::api::tv::get_season).put(lcars::api::tv::update_season),
             )
             .route(
                 "/:id/season/:season/episode/:episode",
-                put(backend::api::tv::update_episode),
+                put(lcars::api::tv::update_episode),
             )
             .route(
                 "/:id/season/:season/episode/:episode/search",
-                post(backend::api::tv::search_episode),
+                post(lcars::api::tv::search_episode),
             )
             .route(
                 "/:id/season/:season/episode/:episode/download",
-                post(backend::api::tv::download_episode),
+                post(lcars::api::tv::download_episode),
             )
             .layer(axum_mw::from_fn_with_state(
                 state.clone(),
-                backend::middleware::auth_middleware,
+                lcars::middleware::auth_middleware,
             ));
 
         // Build music routes (authenticated)
-        let music_routes = backend::api::music::router(state.clone());
+        let music_routes = lcars::api::music::router(state.clone());
 
         // Build downloads routes (authenticated)
-        let downloads_routes = backend::api::downloads::router(state.clone());
+        let downloads_routes = lcars::api::downloads::router(state.clone());
 
         // Build soulseek routes (authenticated)
         // Note: Using :param syntax instead of {param} for axum-test compatibility
         let soulseek_routes = Router::new()
-            .route("/search", post(backend::api::soulseek::start_search))
+            .route("/search", post(lcars::api::soulseek::start_search))
             .route(
                 "/search/:ticket",
-                get(backend::api::soulseek::get_search_results)
-                    .delete(backend::api::soulseek::cancel_search),
+                get(lcars::api::soulseek::get_search_results)
+                    .delete(lcars::api::soulseek::cancel_search),
             )
-            .route("/download", post(backend::api::soulseek::start_download))
-            .route("/downloads", get(backend::api::soulseek::list_downloads))
+            .route("/download", post(lcars::api::soulseek::start_download))
+            .route("/downloads", get(lcars::api::soulseek::list_downloads))
             .route(
                 "/downloads/:id",
-                get(backend::api::soulseek::get_download)
-                    .delete(backend::api::soulseek::cancel_download),
+                get(lcars::api::soulseek::get_download)
+                    .delete(lcars::api::soulseek::cancel_download),
             )
-            .route(
-                "/browse/:username",
-                get(backend::api::soulseek::browse_user),
-            )
-            .route("/status", get(backend::api::soulseek::get_status))
-            .route("/shares", get(backend::api::soulseek::get_shares))
-            .route(
-                "/shares/rescan",
-                post(backend::api::soulseek::rescan_shares),
-            )
-            .route("/uploads", get(backend::api::soulseek::list_uploads))
-            .route(
-                "/uploads/:id",
-                delete(backend::api::soulseek::cancel_upload),
-            )
+            .route("/browse/:username", get(lcars::api::soulseek::browse_user))
+            .route("/status", get(lcars::api::soulseek::get_status))
+            .route("/shares", get(lcars::api::soulseek::get_shares))
+            .route("/shares/rescan", post(lcars::api::soulseek::rescan_shares))
+            .route("/uploads", get(lcars::api::soulseek::list_uploads))
+            .route("/uploads/:id", delete(lcars::api::soulseek::cancel_upload))
             .layer(axum_mw::from_fn_with_state(
                 state.clone(),
-                backend::middleware::auth_middleware,
+                lcars::middleware::auth_middleware,
             ));
 
         // Build search routes (authenticated)
         let search_routes = Router::new()
             .route(
                 "/musicbrainz/artists",
-                get(backend::api::search::search_mb_artists),
+                get(lcars::api::search::search_mb_artists),
             )
             .route(
                 "/musicbrainz/albums",
-                get(backend::api::search::search_mb_albums),
+                get(lcars::api::search::search_mb_albums),
             )
             .layer(axum_mw::from_fn_with_state(
                 state.clone(),
-                backend::middleware::auth_middleware,
+                lcars::middleware::auth_middleware,
             ));
 
         // Build main router with state
         Router::new()
-            .route("/health", get(backend::health_check))
+            .route("/health", get(lcars::health_check))
             .nest("/api/auth", auth_routes)
             .nest("/api/users", user_routes)
             .nest("/api/movies", movies_routes)
@@ -307,7 +291,7 @@ impl TestApp {
             .nest("/api/soulseek", soulseek_routes)
             .nest("/api/search", search_routes)
             .nest("/api/system", system_routes)
-            .route("/api/ws", get(backend::api::ws::ws_handler))
+            .route("/api/ws", get(lcars::api::ws::ws_handler))
             .with_state(state)
     }
 

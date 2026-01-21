@@ -15,7 +15,7 @@ You are a storage specialist implementing file management for LCARS.
 - Directory structure management
 
 ## Project Context
-LCARS manages media files across local and network storage. Services are in `apps/backend/src/services/storage/`.
+LCARS manages media files across local and network storage. Services are in `apps/lcars/src/services/storage/`.
 
 ## Key Responsibilities
 - Managing storage mounts (local, SMB)

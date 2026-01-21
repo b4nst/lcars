@@ -21,7 +21,7 @@ LCARS integrates with external metadata providers and indexers:
 - Cover Art Archive - album artwork
 - Various torrent indexers (1337x, EZTV, YTS, Rutracker)
 
-Services are in `apps/backend/src/services/`.
+Services are in `apps/lcars/src/services/`.
 
 ## API Client Patterns
 ```rust
