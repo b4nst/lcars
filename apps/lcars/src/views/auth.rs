@@ -64,7 +64,8 @@ pub async fn login_submit(
                             let cookie = Cookie::build(("session", token))
                                 .path("/")
                                 .http_only(true)
-                                .secure(false) // Set to true in production with HTTPS
+                                .secure(state.config.server.secure_cookies)
+                                .same_site(axum_extra::extract::cookie::SameSite::Lax)
                                 .max_age(::time::Duration::days(7))
                                 .build();
 

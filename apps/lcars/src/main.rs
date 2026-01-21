@@ -8,7 +8,7 @@ use rand::Rng;
 use rusqlite::Connection;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use lcars::{api, config, db, middleware, services, static_files, views, AppState};
@@ -410,19 +410,42 @@ async fn main() {
             middleware::auth_middleware,
         ));
 
-    // Configure CORS
-    // In production, restrict origins to the frontend URL
-    let cors = CorsLayer::new()
-        .allow_origin(Any) // TODO: Configure allowed origins from config
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::DELETE,
-            Method::OPTIONS,
-        ])
-        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT])
-        .max_age(std::time::Duration::from_secs(3600));
+    // Configure CORS based on allowed origins from config
+    // If no origins configured, only same-origin requests are allowed
+    let cors = if config.server.cors_origins.is_empty() {
+        tracing::info!("CORS: No origins configured, same-origin only");
+        CorsLayer::new()
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
+            .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT])
+            .max_age(std::time::Duration::from_secs(3600))
+    } else {
+        use tower_http::cors::AllowOrigin;
+        let origins: Vec<_> = config
+            .server
+            .cors_origins
+            .iter()
+            .filter_map(|o| o.parse().ok())
+            .collect();
+        tracing::info!("CORS: Allowing origins {:?}", config.server.cors_origins);
+        CorsLayer::new()
+            .allow_origin(AllowOrigin::list(origins))
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
+            .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT])
+            .allow_credentials(true)
+            .max_age(std::time::Duration::from_secs(3600))
+    };
 
     // Build Soulseek routes (authenticated)
     let soulseek_routes = api::soulseek::router(state.clone());

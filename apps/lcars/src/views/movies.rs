@@ -21,6 +21,7 @@ use crate::response::ContentNegotiation;
 use crate::AppState;
 
 use super::auth;
+use super::utils::format_size;
 
 #[derive(Template)]
 #[template(path = "pages/movies_list.html")]
@@ -343,21 +344,6 @@ pub async fn search_releases(
     }
 }
 
-fn format_size(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-
-    if bytes >= GB {
-        format!("{:.2} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.2} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.2} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{} B", bytes)
-    }
-}
 
 /// Add a movie via form submission - calls API handler
 pub async fn add_movie(

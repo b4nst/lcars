@@ -11,6 +11,7 @@ pub mod music;
 pub mod settings;
 pub mod sse;
 pub mod tv;
+pub mod utils;
 
 use askama::Template;
 use axum::{

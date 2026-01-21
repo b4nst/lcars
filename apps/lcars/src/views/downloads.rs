@@ -18,7 +18,7 @@ use crate::api::downloads::{
 use crate::db::models::DownloadStatus;
 use crate::AppState;
 
-use super::auth;
+use super::{auth, utils::{format_size, format_speed}};
 
 // =============================================================================
 // Templates
@@ -102,10 +102,10 @@ pub async fn page(State(state): State<AppState>, cookies: CookieJar) -> impl Int
                     status: d.status.to_string(),
                     progress: d.progress,
                     progress_percent: format!("{:.1}%", d.progress * 100.0),
-                    download_speed: format_speed(d.download_speed),
-                    upload_speed: format_speed(d.upload_speed),
-                    size_display: format_size(d.size_bytes.unwrap_or(0)),
-                    downloaded_display: format_size(d.downloaded_bytes),
+                    download_speed: format_speed(d.download_speed as u64),
+                    upload_speed: format_speed(d.upload_speed as u64),
+                    size_display: format_size(d.size_bytes.unwrap_or(0) as u64),
+                    downloaded_display: format_size(d.downloaded_bytes as u64),
                     peers: d.peers,
                     error_message: d.error_message.clone(),
                 };
@@ -171,10 +171,10 @@ pub async fn pause(
                             status: d.status.to_string(),
                             progress: d.progress,
                             progress_percent: format!("{:.1}%", d.progress * 100.0),
-                            download_speed: format_speed(d.download_speed),
-                            upload_speed: format_speed(d.upload_speed),
-                            size_display: format_size(d.size_bytes.unwrap_or(0)),
-                            downloaded_display: format_size(d.downloaded_bytes),
+                            download_speed: format_speed(d.download_speed as u64),
+                            upload_speed: format_speed(d.upload_speed as u64),
+                            size_display: format_size(d.size_bytes.unwrap_or(0) as u64),
+                            downloaded_display: format_size(d.downloaded_bytes as u64),
                             peers: d.peers,
                             error_message: d.error_message,
                         },
@@ -228,10 +228,10 @@ pub async fn resume(
                             status: d.status.to_string(),
                             progress: d.progress,
                             progress_percent: format!("{:.1}%", d.progress * 100.0),
-                            download_speed: format_speed(d.download_speed),
-                            upload_speed: format_speed(d.upload_speed),
-                            size_display: format_size(d.size_bytes.unwrap_or(0)),
-                            downloaded_display: format_size(d.downloaded_bytes),
+                            download_speed: format_speed(d.download_speed as u64),
+                            upload_speed: format_speed(d.upload_speed as u64),
+                            size_display: format_size(d.size_bytes.unwrap_or(0) as u64),
+                            downloaded_display: format_size(d.downloaded_bytes as u64),
                             peers: d.peers,
                             error_message: d.error_message,
                         },
@@ -282,35 +282,3 @@ pub async fn cancel(
     }
 }
 
-// =============================================================================
-// Helpers
-// =============================================================================
-
-fn format_size(bytes: i64) -> String {
-    const KB: i64 = 1024;
-    const MB: i64 = KB * 1024;
-    const GB: i64 = MB * 1024;
-
-    if bytes >= GB {
-        format!("{:.2} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.2} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.2} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{} B", bytes)
-    }
-}
-
-fn format_speed(bytes_per_sec: i64) -> String {
-    const KB: i64 = 1024;
-    const MB: i64 = KB * 1024;
-
-    if bytes_per_sec >= MB {
-        format!("{:.1} MB/s", bytes_per_sec as f64 / MB as f64)
-    } else if bytes_per_sec >= KB {
-        format!("{:.1} KB/s", bytes_per_sec as f64 / KB as f64)
-    } else {
-        format!("{} B/s", bytes_per_sec)
-    }
-}

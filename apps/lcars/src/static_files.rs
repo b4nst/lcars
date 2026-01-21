@@ -25,11 +25,21 @@ pub async fn serve_static(
                 .header(header::CONTENT_TYPE, mime.as_ref())
                 .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
                 .body(Body::from(content.data.into_owned()))
-                .unwrap()
+                .unwrap_or_else(|_| {
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Body::from("Failed to build response"))
+                        .expect("static error response should always build")
+                })
         }
         None => Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body(Body::from("Not found"))
-            .unwrap(),
+            .unwrap_or_else(|_| {
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::from("Failed to build response"))
+                    .expect("static error response should always build")
+            }),
     }
 }
