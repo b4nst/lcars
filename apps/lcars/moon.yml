@@ -3,10 +3,11 @@ $schema: 'https://moonrepo.dev/schemas/project.json'
 
 type: 'application'
 language: 'rust'
-stack: 'backend'
+stack: 'frontend'
 tags:
   - 'rust'
   - 'api'
+  - 'frontend'
 
 fileGroups:
   sources:
@@ -25,7 +26,7 @@ tasks:
       - '@group(sources)'
       - '@group(cargo)'
     outputs:
-      - '/target/release/backend'
+      - '/target/release/lcars'
 
   dev:
     command: 'cargo'

@@ -15,7 +15,7 @@ You are an indexer specialist implementing torrent search for LCARS.
 - Search result ranking and filtering
 
 ## Project Context
-LCARS searches multiple torrent indexers for media. Code is in `apps/backend/src/services/indexer/`.
+LCARS searches multiple torrent indexers for media. Code is in `apps/lcars/src/services/indexer/`.
 
 ## Key Responsibilities
 - Implementing indexer provider plugins

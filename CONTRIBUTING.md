@@ -27,29 +27,20 @@ Thank you for your interest in contributing to LCARS!
    direnv allow
    ```
 
-3. Install frontend dependencies:
-   ```bash
-   cd apps/frontend && bun install
-   ```
 
 ## Monorepo Structure
 
 This project uses [Moon](https://moonrepo.dev/) for monorepo management. Projects are organized as:
 
-- `apps/backend` - Rust backend service
-- `apps/frontend` - Next.js frontend application
-- `packages/` - Shared packages (future)
+- `apps/lcars` - Rust application (backend + HTMX frontend)
+- `packages/` - Shared packages
 
 ## Development Workflow
 
 ### Running in Development Mode
 
 ```bash
-# Backend
-moon run backend:dev
-
-# Frontend
-moon run frontend:dev
+moon run lcars:dev
 ```
 
 ### Building
@@ -59,8 +50,7 @@ moon run frontend:dev
 moon run :build
 
 # Build specific project
-moon run backend:build
-moon run frontend:build
+moon run lcars:build
 ```
 
 ### Testing
@@ -69,24 +59,18 @@ moon run frontend:build
 # Run all tests
 moon run :test
 
-# Backend tests
-moon run backend:test
+# lcars tests
+moon run lcars:test
 ```
 
 ### Code Quality
 
 ```bash
-# Format backend code
-moon run backend:fmt
+# Format code
+moon run lcars:fmt
 
-# Run clippy on backend
-moon run backend:clippy
-
-# Lint frontend
-moon run frontend:lint
-
-# Type check frontend
-moon run frontend:typecheck
+# Run clippy
+moon run lcars:clippy
 ```
 
 ### Moon Commands

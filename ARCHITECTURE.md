@@ -5,9 +5,7 @@ This document describes the monorepo setup created for the LCARS project.
 ## Overview
 
 The LCARS project is set up as a monorepo using [Moon](https://moonrepo.dev/) for build orchestration, with:
-- **Backend**: Rust service using the Axum framework
-- **Frontend**: Next.js 14 SPA with static export capabilities (using Bun)
-- **Package Manager**: Bun for the frontend
+- **LCARS App**: Rust service using Axum framework with HTMX frontend
 - **Development Environment**: Nix flake with devshell using t3rapkgs
 
 ## Directory Structure
@@ -18,30 +16,18 @@ lcars/
 │   └── workflows/
 │       └── ci.yml              # GitHub Actions CI pipeline
 ├── .moon/
-│   ├── toolchain.yml           # Moon toolchain configuration (Rust + Bun)
+│   ├── toolchain.yml           # Moon toolchain configuration
 │   └── workspace.yml           # Moon workspace configuration
 ├── apps/
-│   ├── backend/                # Rust backend application
-│   │   ├── src/
-│   │   │   └── main.rs         # Axum server with health check endpoint
-│   │   ├── Cargo.toml          # Rust dependencies
-│   │   └── moon.yml            # Moon tasks for backend
-│   └── frontend/               # Next.js frontend application
+│   └── lcars/                  # Rust application (backend + HTMX frontend)
 │       ├── src/
-│       │   └── app/
-│       │       ├── globals.css # Global styles with Tailwind
-│       │       ├── layout.tsx  # Root layout
-│       │       └── page.tsx    # Home page
-│       ├── public/             # Static assets
-│       ├── package.json        # Node dependencies
-│       ├── next.config.js      # Next.js config with static export
-│       ├── tsconfig.json       # TypeScript configuration
-│       ├── tailwind.config.js  # Tailwind CSS configuration
-│       ├── postcss.config.js   # PostCSS configuration
-│       ├── .eslintrc.js        # ESLint configuration
-│       └── moon.yml            # Moon tasks for frontend
-├── packages/                   # Future shared packages
-│   └── .gitkeep
+│       │   └── main.rs         # Axum server
+│       ├── templates/          # Askama HTML templates
+│       ├── static/             # Static assets (CSS, JS)
+│       ├── Cargo.toml          # Rust dependencies
+│       └── moon.yml            # Moon tasks
+├── packages/                   # Shared packages
+│   └── soulseek-protocol/      # Soulseek protocol implementation
 ├── .envrc                      # direnv configuration
 ├── .gitattributes              # Git attributes
 ├── .gitignore                  # Git ignore patterns
@@ -64,15 +50,17 @@ lcars/
 - Rust 1.75.0 for backend development
 - Uses official Moon plugins for both languages
 
-### 2. Backend (Rust + Axum)
+### 2. LCARS Application (Rust + Axum + HTMX)
 
-**Location**: `apps/backend/`
+**Location**: `apps/lcars/`
 
 **Technologies**:
 - Rust 2021 edition
 - Axum 0.7 web framework
 - Tokio async runtime
 - Serde for serialization
+- Askama for HTML templates
+- HTMX for dynamic frontend
 
 **Moon Tasks** (`moon.yml`):
 - `build`: Cargo release build
@@ -82,33 +70,7 @@ lcars/
 - `fmt`: Format checking
 - `clippy`: Linting
 
-**Sample Endpoint**: 
-- `GET /health` - Returns JSON with message and version
-
-### 3. Frontend (Next.js + Bun)
-
-**Location**: `apps/frontend/`
-
-**Technologies**:
-- Next.js 14 with App Router
-- React 18
-- TypeScript 5
-- Tailwind CSS 3
-- Static export mode
-
-**Moon Tasks** (`moon.yml`):
-- `dev`: Development server
-- `build`: Static build and export
-- `lint`: ESLint
-- `typecheck`: TypeScript checking
-
-**Features**:
-- Static export enabled (`output: 'export'`)
-- Tailwind CSS for styling
-- TypeScript for type safety
-- App Router structure
-
-### 4. Nix Development Environment
+### 3. Nix Development Environment
 
 **File**: `flake.nix`
 
@@ -125,7 +87,7 @@ lcars/
 - Displays version info on shell entry
 - Provides `apps.default` that exposes a shell environment for running commands
 
-### 5. CI/CD
+### 4. CI/CD
 
 **GitHub Actions** (`.github/workflows/ci.yml`):
 
@@ -144,19 +106,12 @@ Single CI job using Nix and Moon:
 ```bash
 # Enter Nix shell
 nix develop
-
-# Install frontend dependencies
-cd apps/frontend && bun install
 ```
 
 ### Development
 
 ```bash
-# Backend
-moon run backend:dev
-
-# Frontend (in another terminal)
-moon run frontend:dev
+moon run lcars:dev
 ```
 
 ### Building
@@ -166,8 +121,7 @@ moon run frontend:dev
 moon run :build
 
 # Or individually
-moon run backend:build
-moon run frontend:build
+moon run lcars:build
 ```
 
 ### Testing
@@ -176,20 +130,15 @@ moon run frontend:build
 # Run all tests
 moon run :test
 
-# Backend tests only
-moon run backend:test
+# lcars tests only
+moon run lcars:test
 ```
 
 ### Code Quality
 
 ```bash
-# Backend
-moon run backend:fmt      # Format check
-moon run backend:clippy   # Linting
-
-# Frontend
-moon run frontend:lint       # ESLint
-moon run frontend:typecheck  # TypeScript
+moon run lcars:fmt      # Format check
+moon run lcars:clippy   # Linting
 ```
 
 ## Next Steps

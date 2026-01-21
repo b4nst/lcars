@@ -22,16 +22,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: backend-linux-amd64
+            artifact: lcars-linux-amd64
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            artifact: backend-linux-arm64
+            artifact: lcars-linux-arm64
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact: backend-darwin-amd64
+            artifact: lcars-darwin-amd64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact: backend-darwin-arm64
+            artifact: lcars-darwin-arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +48,7 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build
-        working-directory: apps/backend
+        working-directory: apps/lcars
         run: cargo build --release --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
@@ -56,7 +56,7 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp apps/backend/target/${{ matrix.target }}/release/backend dist/${{ matrix.artifact }}
+          cp apps/lcars/target/${{ matrix.target }}/release/lcars dist/${{ matrix.artifact }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -85,45 +85,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (backend)
-        id: meta-backend
+      - name: Extract metadata (lcars)
+        id: meta-lcars
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
 
-      - name: Build and push backend
+      - name: Build and push lcars
         uses: docker/build-push-action@v5
         with:
-          context: ./apps/backend
+          context: .
+          file: ./apps/lcars/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Extract metadata (frontend)
-        id: meta-frontend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
-
-      - name: Build and push frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./apps/frontend
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
+          tags: ${{ steps.meta-lcars.outputs.tags }}
+          labels: ${{ steps.meta-lcars.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

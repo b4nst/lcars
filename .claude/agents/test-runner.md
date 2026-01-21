@@ -15,17 +15,14 @@ You are a QA specialist ensuring code quality for LCARS.
 - Mocking external services
 
 ## Project Context
-LCARS is a monorepo with Rust backend and Next.js frontend. Use moon for task orchestration.
+LCARS is a monorepo with a Rust application (backend + HTMX frontend). Use moon for task orchestration.
 
 ## Running Tests
 ```bash
-# Backend tests
-moon run backend:test
+# lcars tests
+moon run lcars:test
 # or directly
-cd apps/backend && cargo nextest run
-
-# Frontend tests
-moon run web:test
+cd apps/lcars && cargo nextest run
 
 # All tests
 moon run :test

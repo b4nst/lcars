@@ -13,10 +13,10 @@ COPY Cargo.toml Cargo.lock ./
 
 # Copy workspace members
 COPY packages/soulseek-protocol ./packages/soulseek-protocol
-COPY apps/backend ./apps/backend
+COPY apps/lcars ./apps/lcars
 
-# Build the backend application
-RUN cargo build --release -p backend
+# Build the lcars application
+RUN cargo build --release -p lcars
 
 # Runtime stage
 FROM alpine:3.21
@@ -33,7 +33,7 @@ RUN addgroup -g 1000 lcars && \
     adduser -u 1000 -G lcars -s /bin/sh -D lcars
 
 # Copy the binary
-COPY --from=builder /app/target/release/backend /usr/local/bin/lcars-backend
+COPY --from=builder /app/target/release/lcars /usr/local/bin/lcars
 
 # Create directories
 RUN mkdir -p /data /downloads /media && \
@@ -56,4 +56,4 @@ ENV LCARS_DATABASE__PATH=/data/lcars.db \
     LCARS_TORRENT__DOWNLOAD_DIR=/downloads \
     LCARS_SERVER__HOST=0.0.0.0
 
-ENTRYPOINT ["lcars-backend"]
+ENTRYPOINT ["lcars"]

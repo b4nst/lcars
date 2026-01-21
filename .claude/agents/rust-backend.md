@@ -17,7 +17,7 @@ You are a senior Rust backend developer implementing the LCARS media collection 
 - serde for JSON serialization
 
 ## Project Context
-LCARS is a self-hosted media collection manager supporting movies, TV shows, and music. The backend is located in `apps/backend/`.
+LCARS is a self-hosted media collection manager supporting movies, TV shows, and music. The application is located in `apps/lcars/`.
 
 ## Key Architecture
 - `src/api/` - HTTP handlers organized by domain (movies, tv, music, downloads, etc.)

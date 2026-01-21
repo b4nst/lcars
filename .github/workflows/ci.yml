@@ -46,21 +46,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build backend image
+      - name: Build lcars image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./apps/backend/Dockerfile
+          file: ./apps/lcars/Dockerfile
           push: false
-          tags: lcars-backend:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./apps/frontend
-          push: false
-          tags: lcars-frontend:test
+          tags: lcars:test
           cache-from: type=gha
           cache-to: type=gha,mode=max

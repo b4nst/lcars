@@ -15,7 +15,7 @@ You are a database specialist implementing the LCARS SQLite schema.
 - Trigger implementation for data integrity
 
 ## Project Context
-LCARS uses SQLite for all persistent storage. Migrations are in `apps/backend/src/db/migrations/`.
+LCARS uses SQLite for all persistent storage. Migrations are in `apps/lcars/src/db/migrations/`.
 
 ## Migration Conventions
 - File naming: `V{number}__{description}.sql` (e.g., `V002__add_music_tables.sql`)
