@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Music - LCARS{% endblock %}
+
+{% block content %}
+<div class="lcars-frame">
+    <a href="#main-content" class="sr-only skip-link">Skip to content</a>
+
+    <header class="lcars-header">
+        <div class="lcars-corner lcars-purple"></div>
+        <div class="lcars-title-bar lcars-orange">LCARS</div>
+    </header>
+
+    <div class="lcars-body">
+        {% let active_page = "music" %}
+        {% include "components/sidebar.html" %}
+
+        <main id="main-content" class="lcars-content">
+            <div class="section-header">
+                <h1>Artists</h1>
+                <button class="lcars-button orange"
+                        hx-get="/search/music/modal"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML">
+                    Add Artist
+                </button>
+            </div>
+
+            <p class="text-dim mb-4">{{ total }} artists</p>
+
+            <!-- Artists Grid -->
+            <div class="media-grid">
+                {% for artist in artists %}
+                <a href="/music/artists/{{ artist.id }}" class="media-card">
+                    {% if let Some(image) = artist.image_path %}
+                    <img src="{{ image }}"
+                         alt="{{ artist.name }}"
+                         class="media-card-poster"
+                         loading="lazy">
+                    {% else %}
+                    <div class="media-card-poster" style="display: flex; align-items: center; justify-content: center;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                    </div>
+                    {% endif %}
+                    <div class="media-card-info">
+                        <div class="media-card-title">{{ artist.name }}</div>
+                        {% if let Some(artist_type) = artist.artist_type %}
+                        <div class="media-card-year">{{ artist_type }}</div>
+                        {% endif %}
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </main>
+    </div>
+
+    <footer class="lcars-footer">
+        <div class="lcars-bar lcars-orange"></div>
+        <div class="lcars-bar lcars-yellow"></div>
+        <div class="lcars-bar lcars-blue"></div>
+        <div class="lcars-bar lcars-purple"></div>
+        <div class="lcars-bar lcars-peach"></div>
+    </footer>
+</div>
+
+<div id="modal-container"></div>
+{% endblock %}

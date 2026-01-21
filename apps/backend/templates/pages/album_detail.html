@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}{{ album.title }} - LCARS{% endblock %}
+
+{% block content %}
+<div class="lcars-frame">
+    <a href="#main-content" class="sr-only skip-link">Skip to content</a>
+
+    <header class="lcars-header">
+        <div class="lcars-corner lcars-purple"></div>
+        <div class="lcars-title-bar lcars-orange">LCARS</div>
+    </header>
+
+    <div class="lcars-body">
+        {% let active_page = "music" %}
+        {% include "components/sidebar.html" %}
+
+        <main id="main-content" class="lcars-content">
+            <div class="section-header mb-4">
+                <a href="/music/artists/{{ artist.id }}" class="lcars-button yellow sm">Back to Artist</a>
+            </div>
+
+            <div class="flex gap-4">
+                <!-- Album Cover -->
+                <div style="width: 200px; flex-shrink: 0;">
+                    {% if let Some(cover) = album.cover_path %}
+                    <img src="{{ cover }}"
+                         alt="{{ album.title }}"
+                         style="width: 100%; border-radius: 0.5rem;">
+                    {% else %}
+                    <div style="width: 100%; aspect-ratio: 1; background: var(--lcars-dark); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Info -->
+                <div class="flex-1">
+                    <h1>{{ album.title }}</h1>
+                    <p class="text-dim">
+                        <a href="/music/artists/{{ artist.id }}">{{ artist.name }}</a>
+                        {% if let Some(release_date) = album.release_date %} &bull; {{ release_date }}{% endif %}
+                    </p>
+
+                    <div class="flex gap-4 mt-4">
+                        <div class="lcars-panel">
+                            <div class="lcars-panel-accent lcars-orange"></div>
+                            <div class="lcars-panel-content">
+                                <div class="lcars-panel-title">Status</div>
+                                <span class="download-status {{ album.status }}">{{ album.status }}</span>
+                            </div>
+                        </div>
+                        <div class="lcars-panel">
+                            <div class="lcars-panel-accent lcars-blue"></div>
+                            <div class="lcars-panel-content">
+                                <div class="lcars-panel-title">Tracks</div>
+                                <span>{{ album.total_tracks }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if album.status != "available" %}
+                    <button class="lcars-button orange mt-4"
+                            hx-post="/music/albums/{{ album.id }}/search"
+                            hx-target="#releases"
+                            hx-swap="innerHTML"
+                            hx-indicator="#search-spinner">
+                        <span class="htmx-indicator loading-spinner" id="search-spinner"></span>
+                        Search Releases
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Releases -->
+            <div id="releases" class="mt-4"></div>
+
+            <!-- Track List -->
+            <h2 class="mt-4 mb-2">Tracks</h2>
+            <div class="lcars-panel">
+                <div class="lcars-panel-accent lcars-purple"></div>
+                <div class="lcars-panel-content">
+                    <table class="track-list">
+                        <thead>
+                            <tr>
+                                <th class="track-number">#</th>
+                                <th>Title</th>
+                                <th>Format</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for track in tracks %}
+                            <tr>
+                                <td class="track-number">{{ track.track_number }}</td>
+                                <td>{{ track.title }}</td>
+                                <td class="text-dim">
+                                    {% if let Some(format) = track.audio_format %}
+                                    {{ format }}{% if let Some(bitrate) = track.bitrate %} {{ bitrate }}kbps{% endif %}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td><span class="download-status {{ track.status }}">{{ track.status }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <footer class="lcars-footer">
+        <div class="lcars-bar lcars-orange"></div>
+        <div class="lcars-bar lcars-yellow"></div>
+        <div class="lcars-bar lcars-blue"></div>
+        <div class="lcars-bar lcars-purple"></div>
+        <div class="lcars-bar lcars-peach"></div>
+    </footer>
+</div>
+
+<div id="modal-container"></div>
+{% endblock %}

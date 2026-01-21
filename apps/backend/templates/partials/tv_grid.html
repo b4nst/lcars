@@ -1,0 +1,21 @@
+<div id="tv-grid" class="media-grid">
+    {% for show in shows %}
+    <a href="/tv/{{ show.id }}" class="media-card">
+        <div class="media-card-status {{ show.status }}"></div>
+        {% if let Some(poster) = show.poster_path %}
+        <img src="https://image.tmdb.org/t/p/w300{{ poster }}"
+             alt="{{ show.title }}"
+             class="media-card-poster"
+             loading="lazy">
+        {% else %}
+        <div class="media-card-poster"></div>
+        {% endif %}
+        <div class="media-card-info">
+            <div class="media-card-title">{{ show.title }}</div>
+            {% if let Some(year) = show.year_start %}
+            <div class="media-card-year">{{ year }}{% if let Some(end) = show.year_end %} - {{ end }}{% endif %}</div>
+            {% endif %}
+        </div>
+    </a>
+    {% endfor %}
+</div>

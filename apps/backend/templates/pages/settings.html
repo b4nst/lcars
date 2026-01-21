@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - LCARS{% endblock %}
+
+{% block content %}
+<div class="lcars-frame">
+    <a href="#main-content" class="sr-only skip-link">Skip to content</a>
+
+    <header class="lcars-header">
+        <div class="lcars-corner lcars-purple"></div>
+        <div class="lcars-title-bar lcars-orange">LCARS</div>
+    </header>
+
+    <div class="lcars-body">
+        {% let active_page = "settings" %}
+        {% include "components/sidebar.html" %}
+
+        <main id="main-content" class="lcars-content">
+            <h1 class="mb-4">Settings</h1>
+
+            <!-- System Info -->
+            <div class="lcars-panel">
+                <div class="lcars-panel-accent lcars-orange"></div>
+                <div class="lcars-panel-content">
+                    <div class="lcars-panel-title">System Information</div>
+                    <div class="flex gap-4 flex-wrap">
+                        <div>
+                            <span class="text-dim text-sm">Version</span>
+                            <div>{{ version }}</div>
+                        </div>
+                        <div>
+                            <span class="text-dim text-sm">Uptime</span>
+                            <div>{{ uptime }}</div>
+                        </div>
+                        <div>
+                            <span class="text-dim text-sm">Database Size</span>
+                            <div>{{ db_size }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Services -->
+            <h2 class="mt-4 mb-2">Services</h2>
+
+            <div class="lcars-panel">
+                <div class="lcars-panel-accent {% if torrent_status.available %}lcars-blue{% else %}lcars-red{% endif %}"></div>
+                <div class="lcars-panel-content">
+                    <div class="lcars-panel-title">Torrent Engine</div>
+                    <div>{{ torrent_status.status }}</div>
+                </div>
+            </div>
+
+            <div class="lcars-panel">
+                <div class="lcars-panel-accent {% if soulseek_status.available %}lcars-blue{% else %}lcars-red{% endif %}"></div>
+                <div class="lcars-panel-content">
+                    <div class="lcars-panel-title">Soulseek</div>
+                    <div>{{ soulseek_status.status }}</div>
+                </div>
+            </div>
+
+            <div class="lcars-panel">
+                <div class="lcars-panel-accent {% if vpn_status.connected %}lcars-blue{% else %}lcars-yellow{% endif %}"></div>
+                <div class="lcars-panel-content">
+                    <div class="lcars-panel-title">VPN</div>
+                    {% if vpn_status.connected %}
+                    <div>Connected{% if let Some(ip) = vpn_status.ip %} ({{ ip }}){% endif %}</div>
+                    {% else %}
+                    <div>Not Connected</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Storage -->
+            {% if !storage_mounts.is_empty() %}
+            <h2 class="mt-4 mb-2">Storage</h2>
+            {% for mount in storage_mounts %}
+            <div class="lcars-panel">
+                <div class="lcars-panel-accent {% if mount.available %}lcars-purple{% else %}lcars-red{% endif %}"></div>
+                <div class="lcars-panel-content">
+                    <div class="lcars-panel-title">{{ mount.name }}</div>
+                    <div class="text-sm">{{ mount.path }}</div>
+                    {% if mount.available %}
+                    {% if let Some(free) = mount.free_space %}
+                    <div class="text-dim text-sm">{{ free }} free</div>
+                    {% endif %}
+                    {% else %}
+                    <div class="text-dim text-sm" style="color: var(--lcars-red);">Unavailable</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
+
+            <!-- Indexers -->
+            {% if !indexers.is_empty() %}
+            <h2 class="mt-4 mb-2">Indexers</h2>
+            {% for indexer in indexers %}
+            <div class="lcars-panel">
+                <div class="lcars-panel-accent {% if indexer.enabled %}lcars-orange{% else %}lcars-tan{% endif %}"></div>
+                <div class="lcars-panel-content">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="lcars-panel-title">{{ indexer.name }}</div>
+                            <div class="text-dim text-sm">Priority: {{ indexer.priority }}</div>
+                        </div>
+                        <span class="download-status {% if indexer.enabled %}downloading{% else %}paused{% endif %}">
+                            {% if indexer.enabled %}Enabled{% else %}Disabled{% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
+        </main>
+    </div>
+
+    <footer class="lcars-footer">
+        <div class="lcars-bar lcars-orange"></div>
+        <div class="lcars-bar lcars-yellow"></div>
+        <div class="lcars-bar lcars-blue"></div>
+        <div class="lcars-bar lcars-purple"></div>
+        <div class="lcars-bar lcars-peach"></div>
+    </footer>
+</div>
+{% endblock %}

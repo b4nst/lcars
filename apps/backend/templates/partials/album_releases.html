@@ -1,0 +1,62 @@
+<h2 class="mb-2">Releases</h2>
+
+{% if !torrent_releases.is_empty() %}
+<h3 class="text-orange mb-2">Torrent Releases ({{ torrent_releases.len() }})</h3>
+{% for release in torrent_releases %}
+<div class="release-item">
+    <div class="release-info">
+        <div class="release-title">{{ release.title }}</div>
+        <div class="release-meta">
+            <span>{{ release.indexer }}</span>
+            <span>{{ release.size_display }}</span>
+            <span>{{ release.seeders }} seeders</span>
+            {% if let Some(quality) = release.quality %}
+            <span>{{ quality }}</span>
+            {% endif %}
+        </div>
+    </div>
+    <form hx-post="/music/albums/{{ album_id }}/download"
+          hx-target="#download-status"
+          hx-swap="innerHTML">
+        <input type="hidden" name="source" value="torrent">
+        <input type="hidden" name="magnet" value="{{ release.magnet }}">
+        <button type="submit" class="lcars-button orange sm">
+            Download
+        </button>
+    </form>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if !soulseek_results.is_empty() %}
+<h3 class="text-blue mb-2 mt-4">Soulseek Results ({{ soulseek_results.len() }})</h3>
+{% for result in soulseek_results %}
+<div class="release-item">
+    <div class="release-info">
+        <div class="release-title">{{ result.folder }}</div>
+        <div class="release-meta">
+            <span>{{ result.username }}</span>
+            <span>{{ result.file_count }} files</span>
+            <span>{{ result.quality }}</span>
+            <span>{{ result.user_speed }}</span>
+        </div>
+    </div>
+    <form hx-post="/music/albums/{{ album_id }}/download"
+          hx-target="#download-status"
+          hx-swap="innerHTML">
+        <input type="hidden" name="source" value="soulseek">
+        <input type="hidden" name="username" value="{{ result.username }}">
+        <input type="hidden" name="files" value="{{ result.files_json }}">
+        <button type="submit" class="lcars-button blue sm">
+            Download
+        </button>
+    </form>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if torrent_releases.is_empty() && soulseek_results.is_empty() %}
+<p class="text-dim">No releases found</p>
+{% endif %}
+
+<div id="download-status" class="mt-4"></div>

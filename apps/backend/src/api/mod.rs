@@ -7,6 +7,7 @@ pub mod music;
 pub mod search;
 pub mod soulseek;
 pub mod system;
+pub mod templates;
 pub mod tv;
 pub mod users;
 pub mod ws;

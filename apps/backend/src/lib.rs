@@ -14,7 +14,10 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod middleware;
+pub mod response;
 pub mod services;
+pub mod static_files;
+pub mod views;
 
 use config::Config;
 use services::{

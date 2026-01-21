@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}{{ movie.title }} - LCARS{% endblock %}
+
+{% block content %}
+<div class="lcars-frame">
+    <a href="#main-content" class="sr-only skip-link">Skip to content</a>
+
+    <header class="lcars-header">
+        <div class="lcars-corner lcars-purple"></div>
+        <div class="lcars-title-bar lcars-orange">LCARS</div>
+    </header>
+
+    <div class="lcars-body">
+        {% let active_page = "movies" %}
+        {% include "components/sidebar.html" %}
+
+        <main id="main-content" class="lcars-content">
+            <div class="section-header mb-4">
+                <a href="/movies" class="lcars-button yellow sm">Back</a>
+            </div>
+
+            <div class="flex gap-4">
+                <!-- Poster -->
+                <div style="width: 200px; flex-shrink: 0;">
+                    {% if let Some(poster) = movie.poster_path %}
+                    <img src="https://image.tmdb.org/t/p/w300{{ poster }}"
+                         alt="{{ movie.title }}"
+                         style="width: 100%; border-radius: 0.5rem;">
+                    {% else %}
+                    <div style="width: 100%; aspect-ratio: 2/3; background: var(--lcars-dark); border-radius: 0.5rem;"></div>
+                    {% endif %}
+                </div>
+
+                <!-- Info -->
+                <div class="flex-1">
+                    <h1>{{ movie.title }}</h1>
+                    {% if let Some(year) = movie.year %}
+                    <p class="text-dim">{{ year }}{% if let Some(runtime) = movie.runtime_minutes %} &bull; {{ runtime }} min{% endif %}</p>
+                    {% endif %}
+
+                    <div class="lcars-panel mt-4">
+                        <div class="lcars-panel-accent lcars-orange"></div>
+                        <div class="lcars-panel-content">
+                            <div class="lcars-panel-title">Status</div>
+                            <span class="download-status {{ movie.status }}">{{ movie.status }}</span>
+                        </div>
+                    </div>
+
+                    {% if let Some(overview) = movie.overview %}
+                    <div class="lcars-panel">
+                        <div class="lcars-panel-accent lcars-blue"></div>
+                        <div class="lcars-panel-content">
+                            <div class="lcars-panel-title">Overview</div>
+                            <p style="text-transform: none;">{{ overview }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if movie.status != "available" %}
+                    <button class="lcars-button orange mt-4"
+                            hx-post="/movies/{{ movie.id }}/search"
+                            hx-target="#releases"
+                            hx-swap="innerHTML"
+                            hx-indicator="#search-spinner">
+                        <span class="htmx-indicator loading-spinner" id="search-spinner"></span>
+                        Search Releases
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Releases -->
+            <div id="releases" class="mt-4">
+                {% if !releases.is_empty() %}
+                {% include "partials/releases_list.html" %}
+                {% endif %}
+            </div>
+
+            <div id="download-status"></div>
+        </main>
+    </div>
+
+    <footer class="lcars-footer">
+        <div class="lcars-bar lcars-orange"></div>
+        <div class="lcars-bar lcars-yellow"></div>
+        <div class="lcars-bar lcars-blue"></div>
+        <div class="lcars-bar lcars-purple"></div>
+        <div class="lcars-bar lcars-peach"></div>
+    </footer>
+</div>
+
+<div id="modal-container"></div>
+{% endblock %}

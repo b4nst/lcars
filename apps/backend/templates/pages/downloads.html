@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Downloads - LCARS{% endblock %}
+
+{% block content %}
+<div class="lcars-frame">
+    <a href="#main-content" class="sr-only skip-link">Skip to content</a>
+
+    <header class="lcars-header">
+        <div class="lcars-corner lcars-purple"></div>
+        <div class="lcars-title-bar lcars-orange">LCARS</div>
+    </header>
+
+    <div class="lcars-body">
+        {% let active_page = "downloads" %}
+        {% include "components/sidebar.html" %}
+
+        <main id="main-content" class="lcars-content"
+              hx-ext="sse"
+              sse-connect="/sse/downloads">
+            <h1 class="mb-4">Downloads</h1>
+
+            <!-- Active Downloads -->
+            {% if !active.is_empty() %}
+            <section class="mb-4">
+                <h2 class="text-orange mb-2">Active ({{ active.len() }})</h2>
+                <div id="active-downloads">
+                    {% for download in active %}
+                    {% include "components/download_item.html" %}
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            <!-- Queued -->
+            {% if !queued.is_empty() %}
+            <section class="mb-4">
+                <h2 class="text-yellow mb-2">Queued ({{ queued.len() }})</h2>
+                {% for download in queued %}
+                {% include "components/download_item.html" %}
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            <!-- Seeding -->
+            {% if !seeding.is_empty() %}
+            <section class="mb-4">
+                <h2 class="text-blue mb-2">Seeding ({{ seeding.len() }})</h2>
+                {% for download in seeding %}
+                {% include "components/download_item.html" %}
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            <!-- Paused -->
+            {% if !paused.is_empty() %}
+            <section class="mb-4">
+                <h2 class="mb-2">Paused ({{ paused.len() }})</h2>
+                {% for download in paused %}
+                {% include "components/download_item.html" %}
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            <!-- Completed -->
+            {% if !completed.is_empty() %}
+            <section class="mb-4">
+                <h2 class="mb-2" style="color: var(--status-available);">Completed ({{ completed.len() }})</h2>
+                {% for download in completed %}
+                {% include "components/download_item.html" %}
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            <!-- Failed -->
+            {% if !failed.is_empty() %}
+            <section class="mb-4">
+                <h2 class="mb-2" style="color: var(--lcars-red);">Failed ({{ failed.len() }})</h2>
+                {% for download in failed %}
+                {% include "components/download_item.html" %}
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            {% if active.is_empty() && queued.is_empty() && seeding.is_empty() && paused.is_empty() && completed.is_empty() && failed.is_empty() %}
+            <p class="text-dim">No downloads</p>
+            {% endif %}
+        </main>
+    </div>
+
+    <footer class="lcars-footer">
+        <div class="lcars-bar lcars-orange"></div>
+        <div class="lcars-bar lcars-yellow"></div>
+        <div class="lcars-bar lcars-blue"></div>
+        <div class="lcars-bar lcars-purple"></div>
+        <div class="lcars-bar lcars-peach"></div>
+    </footer>
+</div>
+{% endblock %}

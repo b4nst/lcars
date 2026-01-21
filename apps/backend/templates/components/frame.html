@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="lcars-frame">
+    <!-- Skip to content link -->
+    <a href="#main-content" class="sr-only skip-link">Skip to content</a>
+
+    <!-- Header -->
+    <header class="lcars-header">
+        <div class="lcars-corner lcars-purple"></div>
+        <div class="lcars-title-bar lcars-orange">LCARS</div>
+    </header>
+
+    <!-- Body -->
+    <div class="lcars-body">
+        {% include "components/sidebar.html" %}
+
+        <main id="main-content" class="lcars-content">
+            {% block main %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="lcars-footer">
+        <div class="lcars-bar lcars-orange"></div>
+        <div class="lcars-bar lcars-yellow"></div>
+        <div class="lcars-bar lcars-blue"></div>
+        <div class="lcars-bar lcars-purple"></div>
+        <div class="lcars-bar lcars-peach"></div>
+    </footer>
+</div>
+
+<!-- Modal container -->
+<div id="modal-container"></div>
+{% endblock %}

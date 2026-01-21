@@ -1,0 +1,61 @@
+<div class="download-item" id="download-{{ download.id }}"
+     sse-swap="download-{{ download.id }}">
+    <div class="download-header">
+        <span class="download-name">{{ download.name }}</span>
+        <span class="download-status {{ download.status }}">{{ download.status }}</span>
+    </div>
+
+    {% if download.status == "downloading" || download.status == "seeding" %}
+    <div class="progress-bar">
+        <div class="progress-fill" style="width: {{ download.progress_percent }}"></div>
+    </div>
+    {% endif %}
+
+    <div class="download-stats">
+        {% if download.status == "downloading" || download.status == "seeding" %}
+        <span>{{ download.progress_percent }}</span>
+        {% endif %}
+        <span>{{ download.size_display }}</span>
+        {% if download.status == "downloading" %}
+        <span>{{ download.download_speed }}</span>
+        {% endif %}
+        {% if download.status == "seeding" %}
+        <span>{{ download.upload_speed }}</span>
+        {% endif %}
+        {% if download.peers > 0 %}
+        <span>{{ download.peers }} peers</span>
+        {% endif %}
+    </div>
+
+    {% if let Some(error) = download.error_message %}
+    <div class="lcars-error text-sm mt-2">{{ error }}</div>
+    {% endif %}
+
+    <div class="download-actions">
+        {% if download.status == "downloading" || download.status == "seeding" %}
+        <button class="lcars-button yellow sm"
+                hx-post="/downloads/{{ download.id }}/pause"
+                hx-target="closest .download-item"
+                hx-swap="outerHTML">
+            Pause
+        </button>
+        {% endif %}
+
+        {% if download.status == "paused" %}
+        <button class="lcars-button orange sm"
+                hx-post="/downloads/{{ download.id }}/resume"
+                hx-target="closest .download-item"
+                hx-swap="outerHTML">
+            Resume
+        </button>
+        {% endif %}
+
+        <button class="lcars-button red sm"
+                hx-delete="/downloads/{{ download.id }}"
+                hx-target="closest .download-item"
+                hx-swap="outerHTML"
+                hx-confirm="Cancel this download?">
+            Cancel
+        </button>
+    </div>
+</div>

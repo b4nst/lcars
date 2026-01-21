@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}{{ artist.name }} - LCARS{% endblock %}
+
+{% block content %}
+<div class="lcars-frame">
+    <a href="#main-content" class="sr-only skip-link">Skip to content</a>
+
+    <header class="lcars-header">
+        <div class="lcars-corner lcars-purple"></div>
+        <div class="lcars-title-bar lcars-orange">LCARS</div>
+    </header>
+
+    <div class="lcars-body">
+        {% let active_page = "music" %}
+        {% include "components/sidebar.html" %}
+
+        <main id="main-content" class="lcars-content">
+            <div class="section-header mb-4">
+                <a href="/music" class="lcars-button yellow sm">Back</a>
+                <div class="flex gap-2">
+                    <button class="lcars-button red sm"
+                            hx-delete="/api/music/artists/{{ artist.id }}"
+                            hx-confirm="Are you sure you want to remove {{ artist.name }}? This will also remove all albums and tracks."
+                            hx-swap="none"
+                            hx-on::after-request="if(event.detail.successful) window.location.href='/music'">
+                        Remove Artist
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex gap-4">
+                <!-- Artist Image -->
+                <div style="width: 200px; flex-shrink: 0;">
+                    {% if let Some(image) = artist.image_path %}
+                    <img src="{{ image }}"
+                         alt="{{ artist.name }}"
+                         style="width: 100%; border-radius: 0.5rem;">
+                    {% else %}
+                    <div style="width: 100%; aspect-ratio: 1; background: var(--lcars-dark); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Info -->
+                <div class="flex-1">
+                    <h1>{{ artist.name }}</h1>
+                    {% if let Some(disambiguation) = artist.disambiguation %}
+                    <p class="text-dim">{{ disambiguation }}</p>
+                    {% endif %}
+
+                    <div class="flex gap-4 mt-4">
+                        {% if let Some(artist_type) = artist.artist_type %}
+                        <div class="lcars-panel">
+                            <div class="lcars-panel-accent lcars-orange"></div>
+                            <div class="lcars-panel-content">
+                                <div class="lcars-panel-title">Type</div>
+                                <span>{{ artist_type }}</span>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if let Some(country) = artist.country %}
+                        <div class="lcars-panel">
+                            <div class="lcars-panel-accent lcars-blue"></div>
+                            <div class="lcars-panel-content">
+                                <div class="lcars-panel-title">Country</div>
+                                <span>{{ country }}</span>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if let Some(overview) = artist.overview %}
+                    <div class="lcars-panel mt-4">
+                        <div class="lcars-panel-accent lcars-purple"></div>
+                        <div class="lcars-panel-content">
+                            <div class="lcars-panel-title">Biography</div>
+                            <p style="text-transform: none;">{{ overview }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Albums -->
+            <h2 class="mt-4 mb-2">Albums</h2>
+            <div class="media-grid">
+                {% for album in albums %}
+                <a href="/music/albums/{{ album.id }}" class="media-card">
+                    <div class="media-card-status {{ album.status }}"></div>
+                    {% if let Some(cover) = album.cover_path %}
+                    <img src="{{ cover }}"
+                         alt="{{ album.title }}"
+                         class="media-card-poster"
+                         loading="lazy">
+                    {% else %}
+                    <div class="media-card-poster" style="display: flex; align-items: center; justify-content: center;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                    </div>
+                    {% endif %}
+                    <div class="media-card-info">
+                        <div class="media-card-title">{{ album.title }}</div>
+                        {% if let Some(release_date) = album.release_date %}
+                        <div class="media-card-year">{{ release_date }}</div>
+                        {% endif %}
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </main>
+    </div>
+
+    <footer class="lcars-footer">
+        <div class="lcars-bar lcars-orange"></div>
+        <div class="lcars-bar lcars-yellow"></div>
+        <div class="lcars-bar lcars-blue"></div>
+        <div class="lcars-bar lcars-purple"></div>
+        <div class="lcars-bar lcars-peach"></div>
+    </footer>
+</div>
+
+<div id="modal-container"></div>
+{% endblock %}

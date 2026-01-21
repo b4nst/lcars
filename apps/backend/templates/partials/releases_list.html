@@ -1,0 +1,22 @@
+<h2 class="mb-2">Releases ({{ releases.len() }})</h2>
+{% for release in releases %}
+<div class="release-item">
+    <div class="release-info">
+        <div class="release-title">{{ release.title }}</div>
+        <div class="release-meta">
+            <span>{{ release.indexer }}</span>
+            <span>{{ release.size_display }}</span>
+            <span>{{ release.seeders }} seeders</span>
+            <span>{{ release.quality }}</span>
+        </div>
+    </div>
+    <form hx-post="/{{ media_type }}s/{{ media_id }}/download"
+          hx-target="#download-status"
+          hx-swap="innerHTML">
+        <input type="hidden" name="magnet" value="{{ release.magnet }}">
+        <button type="submit" class="lcars-button orange sm">
+            Download
+        </button>
+    </form>
+</div>
+{% endfor %}

@@ -45,6 +45,17 @@ lofty = "0.22"
 walkdir = "2.5"
 chrono = { version = "0.4", features = ["serde"] }
 
+# HTMX frontend
+askama = { version = "0.12", features = ["with-axum"] }
+askama_axum = "0.4"
+rust-embed = { version = "8.5", features = ["compression"] }
+async-stream = "0.3"
+tokio-stream = "0.1"
+axum-extra = { version = "0.9", features = ["cookie", "form"] }
+mime_guess = "2.0"
+anyhow = "1.0"
+time = "0.3"
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 

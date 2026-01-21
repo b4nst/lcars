@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Login - LCARS{% endblock %}
+
+{% block content %}
+<div class="lcars-login-container">
+    <form method="POST"
+          action="/login"
+          hx-post="/login"
+          hx-target="body"
+          hx-swap="innerHTML"
+          class="lcars-login-form">
+        <h1 class="text-orange">System Access</h1>
+
+        {% if let Some(err) = error %}
+        <div class="lcars-alert error">{{ err }}</div>
+        {% endif %}
+
+        <div class="lcars-form-group">
+            <label for="username" class="lcars-label">Username</label>
+            <input type="text"
+                   name="username"
+                   id="username"
+                   class="lcars-input"
+                   required
+                   autofocus>
+        </div>
+
+        <div class="lcars-form-group">
+            <label for="password" class="lcars-label">Password</label>
+            <input type="password"
+                   name="password"
+                   id="password"
+                   class="lcars-input"
+                   required>
+        </div>
+
+        <button type="submit" class="lcars-button orange w-full">
+            <span class="htmx-indicator loading-spinner"></span>
+            Login
+        </button>
+    </form>
+</div>
+{% endblock %}

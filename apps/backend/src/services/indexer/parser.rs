@@ -72,6 +72,18 @@ impl Quality {
     }
 }
 
+impl std::fmt::Display for Quality {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Quality::P2160 => write!(f, "2160p"),
+            Quality::P1080 => write!(f, "1080p"),
+            Quality::P720 => write!(f, "720p"),
+            Quality::P480 => write!(f, "480p"),
+            Quality::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
 /// Video source type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Source {
@@ -112,6 +124,21 @@ impl Source {
             Source::Screener => 1,
             Source::Cam => 0,
             Source::Unknown => 0,
+        }
+    }
+}
+
+impl std::fmt::Display for Source {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Source::BluRay => write!(f, "BluRay"),
+            Source::WebDl => write!(f, "WEB-DL"),
+            Source::WebRip => write!(f, "WebRip"),
+            Source::Hdtv => write!(f, "HDTV"),
+            Source::DvdRip => write!(f, "DVDRip"),
+            Source::Cam => write!(f, "CAM"),
+            Source::Screener => write!(f, "Screener"),
+            Source::Unknown => write!(f, "Unknown"),
         }
     }
 }
