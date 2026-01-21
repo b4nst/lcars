@@ -3,6 +3,7 @@
 use askama::Template;
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect},
 };
 use axum_extra::extract::CookieJar;
@@ -11,11 +12,12 @@ use serde::Deserialize;
 use axum_extra::extract::Form;
 
 use crate::api::movies::{
-    add_movie as api_add_movie, get_movie, list_movies, search_releases as api_search_releases,
-    AddMovieRequest, ListMoviesQuery,
+    add_movie as api_add_movie, delete_movie as api_delete_movie, get_movie, list_movies,
+    search_releases as api_search_releases, AddMovieRequest, DeleteMovieQuery, ListMoviesQuery,
 };
 use crate::api::search::search_tmdb_movies;
 use crate::db::models::MediaStatus;
+use crate::response::ContentNegotiation;
 use crate::AppState;
 
 use super::auth;
@@ -25,6 +27,14 @@ use super::auth;
 pub struct MoviesListTemplate {
     pub movies: Vec<MovieView>,
     pub total: u64,
+    pub current_status: Option<String>,
+    pub statuses: Vec<String>,
+}
+
+#[derive(Template)]
+#[template(path = "partials/movies_content.html")]
+pub struct MoviesContentTemplate {
+    pub movies: Vec<MovieView>,
     pub current_status: Option<String>,
     pub statuses: Vec<String>,
 }
@@ -116,6 +126,7 @@ pub struct AddMovieForm {
 /// List movies page - calls API handler
 pub async fn list(
     State(state): State<AppState>,
+    headers: HeaderMap,
     cookies: CookieJar,
     Query(query): Query<ListQuery>,
 ) -> impl IntoResponse {
@@ -147,34 +158,47 @@ pub async fn list(
     match response {
         Ok(json) => {
             let data = json.0;
-            MoviesListTemplate {
-                movies: data
-                    .items
-                    .into_iter()
-                    .map(|m| MovieView {
-                        id: m.id,
-                        tmdb_id: m.tmdb_id,
-                        title: m.title,
-                        year: Some(m.year),
-                        overview: m.overview,
-                        poster_path: m.poster_path,
-                        backdrop_path: m.backdrop_path,
-                        runtime_minutes: m.runtime_minutes,
-                        status: m.status.to_string(),
-                        monitored: m.monitored,
-                        file_path: m.file_path,
-                    })
-                    .collect(),
-                total: data.total,
-                current_status: query.status,
-                statuses: vec![
-                    "all".to_string(),
-                    "missing".to_string(),
-                    "downloading".to_string(),
-                    "available".to_string(),
-                ],
+            let movies: Vec<MovieView> = data
+                .items
+                .into_iter()
+                .map(|m| MovieView {
+                    id: m.id,
+                    tmdb_id: m.tmdb_id,
+                    title: m.title,
+                    year: Some(m.year),
+                    overview: m.overview,
+                    poster_path: m.poster_path,
+                    backdrop_path: m.backdrop_path,
+                    runtime_minutes: m.runtime_minutes,
+                    status: m.status.to_string(),
+                    monitored: m.monitored,
+                    file_path: m.file_path,
+                })
+                .collect();
+            let statuses = vec![
+                "all".to_string(),
+                "missing".to_string(),
+                "downloading".to_string(),
+                "available".to_string(),
+            ];
+
+            // Return partial for HTMX requests, full page otherwise
+            if headers.is_htmx() {
+                MoviesContentTemplate {
+                    movies,
+                    current_status: query.status,
+                    statuses,
+                }
+                .into_response()
+            } else {
+                MoviesListTemplate {
+                    movies,
+                    total: data.total,
+                    current_status: query.status,
+                    statuses,
+                }
+                .into_response()
             }
-            .into_response()
         }
         Err(_) => Html("<div class='lcars-error'>Failed to load movies</div>").into_response(),
     }
@@ -373,6 +397,46 @@ pub async fn add_movie(
         }
         Err(e) => Html(format!(
             "<div class='lcars-error'>Failed to add movie: {}</div>",
+            e
+        ))
+        .into_response(),
+    }
+}
+
+/// Delete a movie - calls API handler
+pub async fn delete(
+    State(state): State<AppState>,
+    cookies: CookieJar,
+    Path(id): Path<i64>,
+) -> impl IntoResponse {
+    if auth::get_current_user(&state, &cookies).await.is_none() {
+        return Html("<div class='lcars-error'>Unauthorized</div>").into_response();
+    }
+
+    // Call API handler
+    let response = api_delete_movie(
+        State(state),
+        Path(id),
+        axum::extract::Query(DeleteMovieQuery {
+            delete_files: Some(false),
+        }),
+    )
+    .await;
+
+    match response {
+        Ok(_) => {
+            // Return HX-Redirect header to redirect to movies list
+            (
+                [(
+                    axum::http::header::HeaderName::from_static("hx-redirect"),
+                    "/movies",
+                )],
+                Html(""),
+            )
+                .into_response()
+        }
+        Err(e) => Html(format!(
+            "<div class='lcars-error'>Failed to delete movie: {}</div>",
             e
         ))
         .into_response(),

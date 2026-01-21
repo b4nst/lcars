@@ -6,6 +6,7 @@
 use askama::Template;
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect},
 };
 use axum_extra::extract::CookieJar;
@@ -15,10 +16,11 @@ use axum_extra::extract::Form;
 
 use crate::api::search::search_tmdb_tv;
 use crate::api::tv::{
-    add_show as api_add_show, get_show as api_get_show, list_shows as api_list_shows,
-    AddShowRequest, ListShowsQuery,
+    add_show as api_add_show, delete_show as api_delete_show, get_show as api_get_show,
+    list_shows as api_list_shows, AddShowRequest, DeleteShowQuery, ListShowsQuery,
 };
 use crate::db::models::ShowStatus;
+use crate::response::ContentNegotiation;
 use crate::AppState;
 
 use super::auth;
@@ -32,6 +34,14 @@ use super::auth;
 pub struct TvListTemplate {
     pub shows: Vec<ShowView>,
     pub total: u64,
+    pub current_status: Option<String>,
+    pub statuses: Vec<String>,
+}
+
+#[derive(Template)]
+#[template(path = "partials/tv_content.html")]
+pub struct TvContentTemplate {
+    pub shows: Vec<ShowView>,
     pub current_status: Option<String>,
     pub statuses: Vec<String>,
 }
@@ -126,6 +136,7 @@ pub struct AddShowForm {
 /// List TV shows page - calls API handler
 pub async fn list(
     State(state): State<AppState>,
+    headers: HeaderMap,
     cookies: CookieJar,
     Query(query): Query<ListQuery>,
 ) -> impl IntoResponse {
@@ -158,33 +169,46 @@ pub async fn list(
     match response {
         Ok(json) => {
             let data = json.0;
-            TvListTemplate {
-                shows: data
-                    .items
-                    .into_iter()
-                    .map(|s| ShowView {
-                        id: s.id,
-                        tmdb_id: s.tmdb_id,
-                        title: s.title,
-                        year_start: s.year_start,
-                        year_end: s.year_end,
-                        overview: s.overview,
-                        poster_path: s.poster_path,
-                        backdrop_path: s.backdrop_path,
-                        status: s.status.to_string(),
-                        monitored: s.monitored,
-                    })
-                    .collect(),
-                total: data.total,
-                current_status: query.status,
-                statuses: vec![
-                    "all".to_string(),
-                    "continuing".to_string(),
-                    "ended".to_string(),
-                    "canceled".to_string(),
-                ],
+            let shows: Vec<ShowView> = data
+                .items
+                .into_iter()
+                .map(|s| ShowView {
+                    id: s.id,
+                    tmdb_id: s.tmdb_id,
+                    title: s.title,
+                    year_start: s.year_start,
+                    year_end: s.year_end,
+                    overview: s.overview,
+                    poster_path: s.poster_path,
+                    backdrop_path: s.backdrop_path,
+                    status: s.status.to_string(),
+                    monitored: s.monitored,
+                })
+                .collect();
+            let statuses = vec![
+                "all".to_string(),
+                "continuing".to_string(),
+                "ended".to_string(),
+                "canceled".to_string(),
+            ];
+
+            // Return partial for HTMX requests, full page otherwise
+            if headers.is_htmx() {
+                TvContentTemplate {
+                    shows,
+                    current_status: query.status,
+                    statuses,
+                }
+                .into_response()
+            } else {
+                TvListTemplate {
+                    shows,
+                    total: data.total,
+                    current_status: query.status,
+                    statuses,
+                }
+                .into_response()
             }
-            .into_response()
         }
         Err(_) => Html("<div class='lcars-error'>Failed to load TV shows</div>").into_response(),
     }
@@ -343,6 +367,46 @@ pub async fn add_show(
         }
         Err(e) => Html(format!(
             "<div class='lcars-error'>Failed to add TV show: {}</div>",
+            e
+        ))
+        .into_response(),
+    }
+}
+
+/// Delete a TV show - calls API handler
+pub async fn delete(
+    State(state): State<AppState>,
+    cookies: CookieJar,
+    Path(id): Path<i64>,
+) -> impl IntoResponse {
+    if auth::get_current_user(&state, &cookies).await.is_none() {
+        return Html("<div class='lcars-error'>Unauthorized</div>").into_response();
+    }
+
+    // Call API handler
+    let response = api_delete_show(
+        State(state),
+        Path(id),
+        axum::extract::Query(DeleteShowQuery {
+            delete_files: Some(false),
+        }),
+    )
+    .await;
+
+    match response {
+        Ok(_) => {
+            // Return HX-Redirect header to redirect to TV list
+            (
+                [(
+                    axum::http::header::HeaderName::from_static("hx-redirect"),
+                    "/tv",
+                )],
+                Html(""),
+            )
+                .into_response()
+        }
+        Err(e) => Html(format!(
+            "<div class='lcars-error'>Failed to delete TV show: {}</div>",
             e
         ))
         .into_response(),

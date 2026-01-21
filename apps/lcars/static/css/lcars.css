@@ -539,6 +539,14 @@ a:hover {
   overflow-y: auto;
 }
 
+.lcars-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-top: 1px solid var(--lcars-black);
+}
+
 /* Release List */
 .release-item {
   display: flex;

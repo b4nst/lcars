@@ -18,6 +18,14 @@
         <main id="main-content" class="lcars-content">
             <div class="section-header mb-4">
                 <a href="/tv" class="lcars-button yellow sm">Back</a>
+                <div class="flex gap-2">
+                    <button class="lcars-button red sm"
+                            hx-delete="/tv/{{ show.id }}"
+                            hx-confirm="Are you sure you want to remove {{ show.title }}? This will remove the show and all episodes from your library."
+                            hx-swap="none">
+                        Remove Show
+                    </button>
+                </div>
             </div>
 
             <div class="flex gap-4">

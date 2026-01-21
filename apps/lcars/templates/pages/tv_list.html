@@ -28,42 +28,7 @@
 
             <p class="text-dim mb-4">{{ total }} shows</p>
 
-            <!-- Filters -->
-            <div class="filter-group">
-                {% for status in statuses %}
-                <a href="/tv{% if status != "all" %}?status={{ status }}{% endif %}"
-                   class="lcars-button {% if current_status.as_deref() == Some(status.as_str()) || (current_status.is_none() && status == "all") %}orange{% else %}yellow{% endif %} sm"
-                   hx-get="/tv{% if status != "all" %}?status={{ status }}{% endif %}"
-                   hx-target="main"
-                   hx-swap="innerHTML"
-                   hx-push-url="true">
-                    {{ status }}
-                </a>
-                {% endfor %}
-            </div>
-
-            <!-- Shows Grid -->
-            <div class="media-grid">
-                {% for show in shows %}
-                <a href="/tv/{{ show.id }}" class="media-card">
-                    <div class="media-card-status {{ show.status }}"></div>
-                    {% if let Some(poster) = show.poster_path %}
-                    <img src="https://image.tmdb.org/t/p/w300{{ poster }}"
-                         alt="{{ show.title }}"
-                         class="media-card-poster"
-                         loading="lazy">
-                    {% else %}
-                    <div class="media-card-poster"></div>
-                    {% endif %}
-                    <div class="media-card-info">
-                        <div class="media-card-title">{{ show.title }}</div>
-                        {% if let Some(year) = show.year_start %}
-                        <div class="media-card-year">{{ year }}{% if let Some(end) = show.year_end %} - {{ end }}{% endif %}</div>
-                        {% endif %}
-                    </div>
-                </a>
-                {% endfor %}
-            </div>
+            {% include "partials/tv_content.html" %}
         </main>
     </div>
 

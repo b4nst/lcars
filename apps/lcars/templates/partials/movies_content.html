@@ -1,0 +1,18 @@
+<div id="movies-content">
+    <!-- Filters -->
+    <div class="filter-group">
+        {% for status in statuses %}
+        <a href="/movies{% if status != "all" %}?status={{ status }}{% endif %}"
+           class="lcars-button {% if current_status.as_deref() == Some(status.as_str()) || (current_status.is_none() && status == "all") %}orange{% else %}yellow{% endif %} sm"
+           hx-get="/movies{% if status != "all" %}?status={{ status }}{% endif %}"
+           hx-target="#movies-content"
+           hx-swap="outerHTML"
+           hx-push-url="true">
+            {{ status }}
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- Movies Grid -->
+    {% include "partials/movies_grid.html" %}
+</div>
