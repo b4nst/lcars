@@ -39,6 +39,12 @@ pub struct ServerConfig {
     #[serde(default = "default_port")]
     pub port: u16,
     pub jwt_secret: Option<String>,
+    /// Enable secure cookies (should be true in production with HTTPS)
+    #[serde(default)]
+    pub secure_cookies: bool,
+    /// Allowed CORS origins (empty means same-origin only)
+    #[serde(default)]
+    pub cors_origins: Vec<String>,
 }
 
 // Custom Debug implementation to avoid exposing jwt_secret
@@ -61,6 +67,8 @@ impl Default for ServerConfig {
             host: default_host(),
             port: default_port(),
             jwt_secret: None,
+            secure_cookies: false,
+            cors_origins: Vec::new(),
         }
     }
 }

@@ -10,6 +10,7 @@ use axum_extra::extract::CookieJar;
 use crate::AppState;
 
 use super::auth;
+use super::utils::format_size;
 
 #[derive(Template)]
 #[template(path = "pages/settings.html")]
@@ -139,7 +140,7 @@ pub async fn page(State(state): State<AppState>, cookies: CookieJar) -> impl Int
                         .free_space()
                         .await
                         .ok()
-                        .map(|bytes| format_size(bytes as i64))
+                        .map(|bytes| format_size(bytes))
                 } else {
                     None
                 };
@@ -178,7 +179,7 @@ fn get_db_size(conn: &rusqlite::Connection) -> String {
             |row| row.get(0),
         )
         .unwrap_or(0);
-    format_size(size)
+    format_size(size as u64)
 }
 
 async fn check_vpn_status() -> VpnStatus {
@@ -205,18 +206,3 @@ fn format_duration(seconds: u64) -> String {
     }
 }
 
-fn format_size(bytes: i64) -> String {
-    const KB: i64 = 1024;
-    const MB: i64 = KB * 1024;
-    const GB: i64 = MB * 1024;
-
-    if bytes >= GB {
-        format!("{:.2} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.2} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.2} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{} B", bytes)
-    }
-}

@@ -48,23 +48,43 @@ document.addEventListener('htmx:sseError', function(e) {
 function showConfirmModal(message, onConfirm) {
     const backdrop = document.createElement('div');
     backdrop.className = 'lcars-modal-backdrop';
-    backdrop.innerHTML = `
-        <div class="lcars-modal" style="max-width: 30rem;">
-            <div class="lcars-modal-header" style="background: var(--lcars-red);">
-                <h2>Confirm</h2>
-            </div>
-            <div class="lcars-modal-body">
-                <p style="text-transform: none;">${message}</p>
-            </div>
-            <div class="lcars-modal-footer">
-                <button class="lcars-button yellow sm" data-action="cancel">Cancel</button>
-                <button class="lcars-button red sm" data-action="confirm">Remove</button>
-            </div>
-        </div>
-    `;
 
-    const cancelBtn = backdrop.querySelector('[data-action="cancel"]');
-    const confirmBtn = backdrop.querySelector('[data-action="confirm"]');
+    // Build modal structure safely to prevent XSS
+    const modal = document.createElement('div');
+    modal.className = 'lcars-modal';
+    modal.style.maxWidth = '30rem';
+
+    const header = document.createElement('div');
+    header.className = 'lcars-modal-header';
+    header.style.background = 'var(--lcars-red)';
+    const h2 = document.createElement('h2');
+    h2.textContent = 'Confirm';
+    header.appendChild(h2);
+
+    const body = document.createElement('div');
+    body.className = 'lcars-modal-body';
+    const p = document.createElement('p');
+    p.style.textTransform = 'none';
+    p.textContent = message; // Safe: textContent escapes HTML
+    body.appendChild(p);
+
+    const footer = document.createElement('div');
+    footer.className = 'lcars-modal-footer';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'lcars-button yellow sm';
+    cancelBtn.dataset.action = 'cancel';
+    cancelBtn.textContent = 'Cancel';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'lcars-button red sm';
+    confirmBtn.dataset.action = 'confirm';
+    confirmBtn.textContent = 'Remove';
+    footer.appendChild(cancelBtn);
+    footer.appendChild(confirmBtn);
+
+    modal.appendChild(header);
+    modal.appendChild(body);
+    modal.appendChild(footer);
+    backdrop.appendChild(modal);
 
     // Close on backdrop click
     backdrop.addEventListener('click', function(e) {
