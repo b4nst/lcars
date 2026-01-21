@@ -49,10 +49,6 @@
             clippy
             rust-analyzer
 
-            # Frontend tooling
-            bun
-            nodejs  # Required by Next.js build
-
             # Other development tools
             git
             pkg-config

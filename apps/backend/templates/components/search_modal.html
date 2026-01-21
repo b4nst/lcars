@@ -1,0 +1,31 @@
+<div class="lcars-modal-backdrop" onclick="if(event.target === this) this.remove()">
+    <div class="lcars-modal" onclick="event.stopPropagation()">
+        <div class="lcars-modal-header">
+            <h2>Search {{ search_type }}</h2>
+            <button class="lcars-button red sm"
+                    onclick="this.closest('.lcars-modal-backdrop').remove()">
+                X
+            </button>
+        </div>
+
+        <div class="lcars-modal-body">
+            <div class="lcars-form-group">
+                <input type="text"
+                       name="q"
+                       class="lcars-input search-input"
+                       placeholder="Search..."
+                       hx-get="{{ search_endpoint }}"
+                       hx-trigger="keyup changed delay:300ms"
+                       hx-target="#search-results"
+                       hx-swap="innerHTML"
+                       hx-indicator="#modal-search-spinner"
+                       autofocus>
+                <span class="htmx-indicator loading-spinner" id="modal-search-spinner" style="margin-left: 0.5rem;"></span>
+            </div>
+
+            <div id="search-results" class="mt-4">
+                <!-- Results will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>

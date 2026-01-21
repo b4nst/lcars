@@ -1,0 +1,35 @@
+<div class="download-item" id="download-{{ download.id }}">
+    <div class="download-header">
+        <span class="download-name">{{ download.name }}</span>
+        <span class="download-status {{ download.status }}">{{ download.status }}</span>
+    </div>
+
+    <div class="progress-bar">
+        <div class="progress-fill" style="width: {{ download.progress_percent }}"></div>
+    </div>
+
+    <div class="download-stats">
+        <span>{{ download.progress_percent }}</span>
+        <span>{{ download.downloaded_display }} / {{ download.size_display }}</span>
+        <span>{{ download.download_speed }}</span>
+        {% if download.peers > 0 %}
+        <span>{{ download.peers }} peers</span>
+        {% endif %}
+    </div>
+
+    <div class="download-actions">
+        <button class="lcars-button yellow sm"
+                hx-post="/downloads/{{ download.id }}/pause"
+                hx-target="closest .download-item"
+                hx-swap="outerHTML">
+            Pause
+        </button>
+        <button class="lcars-button red sm"
+                hx-delete="/downloads/{{ download.id }}"
+                hx-target="closest .download-item"
+                hx-swap="outerHTML"
+                hx-confirm="Cancel this download?">
+            Cancel
+        </button>
+    </div>
+</div>

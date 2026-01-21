@@ -1,0 +1,44 @@
+{% if results.is_empty() %}
+<p class="text-dim">No results found</p>
+{% else %}
+{% for result in results %}
+<div class="release-item">
+    <div class="release-info">
+        {% if search_type == "movies" || search_type == "tv" %}
+        <div class="flex gap-2">
+            {% if let Some(poster) = result.poster_path %}
+            <img src="https://image.tmdb.org/t/p/w92{{ poster }}"
+                 alt="{{ result.title }}"
+                 style="width: 50px; border-radius: 0.25rem;">
+            {% endif %}
+            <div>
+                <div class="release-title">{{ result.title }}</div>
+                {% if let Some(year) = result.year %}
+                <div class="text-dim text-sm">{{ year }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="release-title">{{ result.name }}</div>
+        {% if let Some(disambiguation) = result.disambiguation %}
+        <div class="text-dim text-sm">{{ disambiguation }}</div>
+        {% endif %}
+        {% endif %}
+    </div>
+    <form hx-post="/api/{{ search_type }}"
+          hx-target="body"
+          hx-swap="innerHTML">
+        {% if search_type == "movies" %}
+        <input type="hidden" name="tmdb_id" value="{{ result.id }}">
+        {% else if search_type == "tv" %}
+        <input type="hidden" name="tmdb_id" value="{{ result.id }}">
+        {% else %}
+        <input type="hidden" name="mbid" value="{{ result.id }}">
+        {% endif %}
+        <button type="submit" class="lcars-button orange sm">
+            Add
+        </button>
+    </form>
+</div>
+{% endfor %}
+{% endif %}

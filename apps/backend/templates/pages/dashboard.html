@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - LCARS{% endblock %}
+
+{% block content %}
+<div class="lcars-frame">
+    <a href="#main-content" class="sr-only skip-link">Skip to content</a>
+
+    <header class="lcars-header">
+        <div class="lcars-corner lcars-purple"></div>
+        <div class="lcars-title-bar lcars-orange">LCARS</div>
+    </header>
+
+    <div class="lcars-body">
+        {% let active_page = "dashboard" %}
+        {% include "components/sidebar.html" %}
+
+        <main id="main-content" class="lcars-content">
+            <h1 class="mb-4">Dashboard</h1>
+
+            <!-- Stats Grid with SSE updates -->
+            <div class="stats-grid"
+                 hx-ext="sse"
+                 sse-connect="/sse/status"
+                 sse-swap="status">
+                {% include "partials/status_cards.html" %}
+            </div>
+
+            <!-- Active Downloads -->
+            <section class="mb-4">
+                <div class="section-header">
+                    <h2>Active Downloads</h2>
+                    <a href="/downloads" class="lcars-button yellow sm">View All</a>
+                </div>
+                <div hx-ext="sse"
+                     sse-connect="/sse/downloads"
+                     id="active-downloads">
+                    {% if active_downloads > 0 %}
+                    <p class="text-dim">{{ active_downloads }} active download(s)</p>
+                    {% else %}
+                    <p class="text-dim">No active downloads</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            <!-- Recent Movies -->
+            <section>
+                <div class="section-header">
+                    <h2>Recent Movies</h2>
+                    <a href="/movies" class="lcars-button yellow sm">View All</a>
+                </div>
+                <div class="media-grid">
+                    {% for movie in recent_movies %}
+                    <a href="/movies/{{ movie.id }}" class="media-card">
+                        <div class="media-card-status {{ movie.status }}"></div>
+                        {% if let Some(poster) = movie.poster_path %}
+                        <img src="https://image.tmdb.org/t/p/w300{{ poster }}"
+                             alt="{{ movie.title }}"
+                             class="media-card-poster"
+                             loading="lazy">
+                        {% else %}
+                        <div class="media-card-poster"></div>
+                        {% endif %}
+                        <div class="media-card-info">
+                            <div class="media-card-title">{{ movie.title }}</div>
+                            {% if let Some(year) = movie.year %}
+                            <div class="media-card-year">{{ year }}</div>
+                            {% endif %}
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <footer class="lcars-footer">
+        <div class="lcars-bar lcars-orange"></div>
+        <div class="lcars-bar lcars-yellow"></div>
+        <div class="lcars-bar lcars-blue"></div>
+        <div class="lcars-bar lcars-purple"></div>
+        <div class="lcars-bar lcars-peach"></div>
+    </footer>
+</div>
+{% endblock %}

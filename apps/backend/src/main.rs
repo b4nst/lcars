@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-use backend::{api, config, db, middleware, services, AppState};
+use backend::{api, config, db, middleware, services, static_files, views, AppState};
 
 use config::Config;
 use services::{
@@ -220,8 +220,18 @@ async fn main() {
                 Ok(engine) => {
                     tracing::info!(
                         server = %config.soulseek.server_host,
-                        "Soulseek engine initialized (not connected)"
+                        "Soulseek engine initialized"
                     );
+                    // Auto-connect to Soulseek server
+                    match engine.connect().await {
+                        Ok(()) => {
+                            tracing::info!("Soulseek connected successfully");
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to connect to Soulseek: {}", e);
+                            tracing::info!("Auto-reconnect is enabled, will retry in background");
+                        }
+                    }
                     Some(engine)
                 }
                 Err(e) => {
@@ -417,9 +427,18 @@ async fn main() {
     // Build Soulseek routes (authenticated)
     let soulseek_routes = api::soulseek::router(state.clone());
 
+    // Build HTML views routes for HTMX frontend
+    let html_routes = views::routes();
+
     // Build main router with state
     let app = Router::new()
+        // Static assets (CSS, JS, fonts)
+        .route("/static/*path", get(static_files::serve_static))
+        // Health check
         .route("/health", get(backend::health_check))
+        // HTMX HTML routes (served at root)
+        .merge(html_routes)
+        // JSON API routes (under /api)
         .nest("/api/auth", auth_routes)
         .nest("/api/users", user_routes)
         .nest("/api/movies", movies_routes)
@@ -430,6 +449,8 @@ async fn main() {
         .nest("/api/soulseek", soulseek_routes)
         .nest("/api/system", system_routes)
         .route("/api/ws", get(api::ws::ws_handler))
+        // 404 fallback
+        .fallback(views::not_found)
         .layer(cors)
         .with_state(state);
 

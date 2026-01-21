@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}{{ show.title }} - LCARS{% endblock %}
+
+{% block content %}
+<div class="lcars-frame">
+    <a href="#main-content" class="sr-only skip-link">Skip to content</a>
+
+    <header class="lcars-header">
+        <div class="lcars-corner lcars-purple"></div>
+        <div class="lcars-title-bar lcars-orange">LCARS</div>
+    </header>
+
+    <div class="lcars-body">
+        {% let active_page = "tv" %}
+        {% include "components/sidebar.html" %}
+
+        <main id="main-content" class="lcars-content">
+            <div class="section-header mb-4">
+                <a href="/tv" class="lcars-button yellow sm">Back</a>
+            </div>
+
+            <div class="flex gap-4">
+                <!-- Poster -->
+                <div style="width: 200px; flex-shrink: 0;">
+                    {% if let Some(poster) = show.poster_path %}
+                    <img src="https://image.tmdb.org/t/p/w300{{ poster }}"
+                         alt="{{ show.title }}"
+                         style="width: 100%; border-radius: 0.5rem;">
+                    {% else %}
+                    <div style="width: 100%; aspect-ratio: 2/3; background: var(--lcars-dark); border-radius: 0.5rem;"></div>
+                    {% endif %}
+                </div>
+
+                <!-- Info -->
+                <div class="flex-1">
+                    <h1>{{ show.title }}</h1>
+                    {% if let Some(year) = show.year_start %}
+                    <p class="text-dim">{{ year }}{% if let Some(end) = show.year_end %} - {{ end }}{% endif %}</p>
+                    {% endif %}
+
+                    <div class="lcars-panel mt-4">
+                        <div class="lcars-panel-accent lcars-orange"></div>
+                        <div class="lcars-panel-content">
+                            <div class="lcars-panel-title">Status</div>
+                            <span>{{ show.status }}</span>
+                        </div>
+                    </div>
+
+                    {% if let Some(overview) = show.overview %}
+                    <div class="lcars-panel">
+                        <div class="lcars-panel-accent lcars-blue"></div>
+                        <div class="lcars-panel-content">
+                            <div class="lcars-panel-title">Overview</div>
+                            <p style="text-transform: none;">{{ overview }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Seasons -->
+            <h2 class="mt-4 mb-2">Seasons</h2>
+            {% for season in seasons %}
+            <div class="lcars-panel">
+                <div class="lcars-panel-accent lcars-purple"></div>
+                <div class="lcars-panel-content">
+                    <div class="flex justify-between items-center">
+                        <h3>Season {{ season.season_number }}</h3>
+                        <span class="text-dim text-sm">{{ season.available_count }}/{{ season.episode_count }} episodes</span>
+                    </div>
+                    <table class="track-list mt-2">
+                        <thead>
+                            <tr>
+                                <th class="track-number">#</th>
+                                <th>Title</th>
+                                <th>Air Date</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for episode in season.episodes %}
+                            <tr>
+                                <td class="track-number">{{ episode.episode_number }}</td>
+                                <td>{{ episode.title }}</td>
+                                <td class="text-dim">{{ episode.air_date.as_deref().unwrap_or("-") }}</td>
+                                <td><span class="download-status {{ episode.status }}">{{ episode.status }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endfor %}
+        </main>
+    </div>
+
+    <footer class="lcars-footer">
+        <div class="lcars-bar lcars-orange"></div>
+        <div class="lcars-bar lcars-yellow"></div>
+        <div class="lcars-bar lcars-blue"></div>
+        <div class="lcars-bar lcars-purple"></div>
+        <div class="lcars-bar lcars-peach"></div>
+    </footer>
+</div>
+
+<div id="modal-container"></div>
+{% endblock %}

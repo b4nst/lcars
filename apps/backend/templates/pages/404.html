@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Not Found - LCARS{% endblock %}
+
+{% block content %}
+<div class="lcars-frame">
+    <a href="#main-content" class="sr-only skip-link">Skip to content</a>
+
+    <header class="lcars-header">
+        <div class="lcars-corner lcars-purple"></div>
+        <div class="lcars-title-bar lcars-orange">LCARS</div>
+    </header>
+
+    <div class="lcars-body">
+        {% include "components/sidebar.html" %}
+
+        <main id="main-content" class="lcars-content">
+            <div class="lcars-panel red">
+                <div class="lcars-panel-header">
+                    <span class="lcars-panel-title">ERROR 404</span>
+                </div>
+                <div class="lcars-panel-content" style="text-align: center; padding: 3rem;">
+                    <h1 style="font-size: 4rem; margin-bottom: 1rem;">Page Not Found</h1>
+                    <p style="font-size: 1.25rem; color: var(--lcars-text-dim); margin-bottom: 2rem;">
+                        The requested resource could not be located.
+                    </p>
+                    <code style="display: block; background: var(--lcars-black); padding: 1rem; border-radius: 0.5rem; margin-bottom: 2rem;">
+                        {{ path }}
+                    </code>
+                    <a href="/" class="lcars-button orange">Return to Dashboard</a>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <footer class="lcars-footer">
+        <div class="lcars-bar lcars-orange"></div>
+        <div class="lcars-bar lcars-yellow"></div>
+        <div class="lcars-bar lcars-blue"></div>
+        <div class="lcars-bar lcars-purple"></div>
+        <div class="lcars-bar lcars-peach"></div>
+    </footer>
+</div>
+{% endblock %}
