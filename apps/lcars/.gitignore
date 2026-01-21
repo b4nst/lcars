@@ -1,1 +1,8 @@
-data/apps/backend/config.tomlapps/backend/downloads
+# Local configuration (may contain secrets)
+config.toml
+
+# Local database and data files
+data/
+
+# Download directory
+downloads/
