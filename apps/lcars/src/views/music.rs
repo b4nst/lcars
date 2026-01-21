@@ -15,8 +15,9 @@ use serde::Deserialize;
 use axum_extra::extract::Form;
 
 use crate::api::music::{
-    add_artist as api_add_artist, get_album as api_get_album, get_artist as api_get_artist,
-    list_artists as api_list_artists, unified_search_album as api_unified_search, AddArtistRequest,
+    add_artist as api_add_artist, delete_artist as api_delete_artist, get_album as api_get_album,
+    get_artist as api_get_artist, list_artists as api_list_artists,
+    unified_search_album as api_unified_search, AddArtistRequest, DeleteArtistQuery,
     ListArtistsQuery, UnifiedSearchRequest,
 };
 use crate::api::search::{search_mb_artists, SearchQuery as ApiSearchQuery};
@@ -551,6 +552,46 @@ pub async fn add_artist(
         }
         Err(e) => Html(format!(
             "<div class='lcars-error'>Failed to add artist: {}</div>",
+            e
+        ))
+        .into_response(),
+    }
+}
+
+/// Delete an artist - calls API handler
+pub async fn delete_artist(
+    State(state): State<AppState>,
+    cookies: CookieJar,
+    Path(id): Path<i64>,
+) -> impl IntoResponse {
+    if auth::get_current_user(&state, &cookies).await.is_none() {
+        return Html("<div class='lcars-error'>Unauthorized</div>").into_response();
+    }
+
+    // Call API handler
+    let response = api_delete_artist(
+        State(state),
+        Path(id),
+        axum::extract::Query(DeleteArtistQuery {
+            delete_files: Some(false),
+        }),
+    )
+    .await;
+
+    match response {
+        Ok(_) => {
+            // Return HX-Redirect header to redirect to music list
+            (
+                [(
+                    axum::http::header::HeaderName::from_static("hx-redirect"),
+                    "/music",
+                )],
+                Html(""),
+            )
+                .into_response()
+        }
+        Err(e) => Html(format!(
+            "<div class='lcars-error'>Failed to delete artist: {}</div>",
             e
         ))
         .into_response(),

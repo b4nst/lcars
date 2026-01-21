@@ -50,17 +50,19 @@ pub fn routes() -> Router<AppState> {
         .route("/logout", axum::routing::post(auth::logout))
         .route("/movies", get(movies::list).post(movies::add_movie))
         .route("/movies/search-modal", get(movies::search_modal))
-        .route("/movies/:id", get(movies::detail))
+        .route("/movies/:id", get(movies::detail).delete(movies::delete))
         .route(
             "/movies/:id/search",
             axum::routing::post(movies::search_releases),
         )
         // Note: download is handled via HTMX calling /api/movies/:id/download directly
         .route("/tv", get(tv::list).post(tv::add_show))
-        .route("/tv/:id", get(tv::detail))
+        .route("/tv/:id", get(tv::detail).delete(tv::delete))
         .route("/music", get(music::artists).post(music::add_artist))
-        .route("/music/artists/:id", get(music::artist_detail))
-        // Note: DELETE /music/artists/:id is handled via HTMX calling /api/music/artists/:id directly
+        .route(
+            "/music/artists/:id",
+            get(music::artist_detail).delete(music::delete_artist),
+        )
         .route("/music/albums/:id", get(music::album_detail))
         .route(
             "/music/albums/:id/search",

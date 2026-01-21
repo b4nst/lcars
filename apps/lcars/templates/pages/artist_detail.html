@@ -20,10 +20,9 @@
                 <a href="/music" class="lcars-button yellow sm">Back</a>
                 <div class="flex gap-2">
                     <button class="lcars-button red sm"
-                            hx-delete="/api/music/artists/{{ artist.id }}"
+                            hx-delete="/music/artists/{{ artist.id }}"
                             hx-confirm="Are you sure you want to remove {{ artist.name }}? This will also remove all albums and tracks."
-                            hx-swap="none"
-                            hx-on::after-request="if(event.detail.successful) window.location.href='/music'">
+                            hx-swap="none">
                         Remove Artist
                     </button>
                 </div>
