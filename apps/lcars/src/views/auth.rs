@@ -4,7 +4,7 @@ use askama::Template;
 use axum::{
     extract::State,
     http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Redirect},
     Form,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
@@ -132,13 +132,4 @@ pub async fn logout(headers: HeaderMap, cookies: CookieJar) -> impl IntoResponse
 pub async fn get_current_user(state: &AppState, cookies: &CookieJar) -> Option<Claims> {
     let session = cookies.get("session")?;
     state.auth_service().verify_token(session.value()).ok()
-}
-
-/// Middleware helper to check if user is authenticated
-pub fn require_auth(cookies: &CookieJar) -> Result<(), Response> {
-    if cookies.get("session").is_some() {
-        Ok(())
-    } else {
-        Err(Redirect::to("/login").into_response())
-    }
 }

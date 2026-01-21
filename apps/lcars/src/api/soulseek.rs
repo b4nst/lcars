@@ -856,7 +856,7 @@ mod tests {
             offset: None,
         };
         assert!(query.min_bitrate.is_none());
-        assert!(query.free_slots_only.unwrap_or(false) == false);
+        assert!(!query.free_slots_only.unwrap_or(false));
     }
 
     #[test]
