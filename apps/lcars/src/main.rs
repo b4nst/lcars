@@ -497,6 +497,28 @@ async fn main() {
     // Build Soulseek routes (authenticated)
     let soulseek_routes = api::soulseek::router(state.clone());
 
+    // Build VPN routes - status/stats for authenticated users, connect/disconnect for admin
+    let vpn_auth_routes = Router::new()
+        .route("/status", get(api::vpn::get_status))
+        .route("/stats", get(api::vpn::get_stats))
+        .layer(axum_mw::from_fn_with_state(
+            state.clone(),
+            middleware::auth_middleware,
+        ));
+
+    let vpn_admin_routes = Router::new()
+        .route("/connect", post(api::vpn::connect))
+        .route("/disconnect", post(api::vpn::disconnect))
+        .layer(axum_mw::from_fn(middleware::require_admin))
+        .layer(axum_mw::from_fn_with_state(
+            state.clone(),
+            middleware::auth_middleware,
+        ));
+
+    let vpn_routes = Router::new()
+        .merge(vpn_auth_routes)
+        .merge(vpn_admin_routes);
+
     // Build HTML views routes for HTMX frontend
     let html_routes = views::routes();
 
@@ -518,6 +540,7 @@ async fn main() {
         .nest("/api/search", search_routes)
         .nest("/api/soulseek", soulseek_routes)
         .nest("/api/system", system_routes)
+        .nest("/api/vpn", vpn_routes)
         .route("/api/ws", get(api::ws::ws_handler))
         // 404 fallback
         .fallback(views::not_found)
