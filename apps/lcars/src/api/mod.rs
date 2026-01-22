@@ -10,4 +10,5 @@ pub mod system;
 pub mod templates;
 pub mod tv;
 pub mod users;
+pub mod vpn;
 pub mod ws;
