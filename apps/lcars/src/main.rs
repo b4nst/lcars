@@ -515,9 +515,7 @@ async fn main() {
             middleware::auth_middleware,
         ));
 
-    let vpn_routes = Router::new()
-        .merge(vpn_auth_routes)
-        .merge(vpn_admin_routes);
+    let vpn_routes = Router::new().merge(vpn_auth_routes).merge(vpn_admin_routes);
 
     // Build HTML views routes for HTMX frontend
     let html_routes = views::routes();

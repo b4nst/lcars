@@ -159,9 +159,9 @@ pub async fn connect(
     }
 
     // Get WireGuard service
-    let wg_service = state
-        .wireguard_service()
-        .ok_or_else(|| AppError::ServiceUnavailable("WireGuard VPN is not configured".to_string()))?;
+    let wg_service = state.wireguard_service().ok_or_else(|| {
+        AppError::ServiceUnavailable("WireGuard VPN is not configured".to_string())
+    })?;
 
     // Check if already connected
     let current_state = wg_service.get_status().await;
@@ -202,9 +202,9 @@ pub async fn disconnect(
     }
 
     // Get WireGuard service
-    let wg_service = state
-        .wireguard_service()
-        .ok_or_else(|| AppError::ServiceUnavailable("WireGuard VPN is not configured".to_string()))?;
+    let wg_service = state.wireguard_service().ok_or_else(|| {
+        AppError::ServiceUnavailable("WireGuard VPN is not configured".to_string())
+    })?;
 
     // Check if already disconnected
     let current_state = wg_service.get_status().await;
