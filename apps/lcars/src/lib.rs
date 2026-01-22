@@ -22,7 +22,7 @@ pub mod views;
 use config::Config;
 use services::{
     AuthService, IndexerManager, MusicBrainzClient, Scheduler, SoulseekEngine, StorageManager,
-    TmdbClient, TorrentEngine,
+    TmdbClient, TorrentEngine, WireGuardService,
 };
 
 /// Application state shared across handlers
@@ -39,6 +39,7 @@ pub struct AppState {
     pub scheduler: Option<Arc<Scheduler>>,
     pub start_time: std::time::Instant,
     pub storage_manager: Option<Arc<StorageManager>>,
+    pub wireguard_service: Option<Arc<WireGuardService>>,
 }
 
 impl AppState {
@@ -85,6 +86,11 @@ impl AppState {
     /// Get a reference to the storage manager, if initialized.
     pub fn storage_manager(&self) -> Option<&StorageManager> {
         self.storage_manager.as_deref()
+    }
+
+    /// Get a reference to the WireGuard service, if initialized.
+    pub fn wireguard_service(&self) -> Option<&WireGuardService> {
+        self.wireguard_service.as_deref()
     }
 
     /// Create a job context for manual job execution.
