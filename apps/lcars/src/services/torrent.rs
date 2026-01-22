@@ -17,6 +17,8 @@ use crate::config::TorrentConfig;
 use crate::db::models::{DownloadStatus, MediaType};
 use crate::error::{AppError, Result};
 
+use super::wireguard::{WireGuardEvent, WireGuardService};
+
 /// Convert an info_hash Id<20> to a hex string.
 fn info_hash_to_string(id: &Id20) -> String {
     hex::encode(id.0)
@@ -64,6 +66,10 @@ pub enum TorrentEvent {
     Paused { info_hash: String },
     /// A torrent has been resumed.
     Resumed { info_hash: String },
+    /// All torrents paused due to VPN kill switch.
+    KillSwitchActivated,
+    /// VPN reconnected, resuming torrents that were paused by kill switch.
+    KillSwitchDeactivated,
 }
 
 /// Reference to associated media for a torrent download.
@@ -103,6 +109,8 @@ struct TorrentInfo {
     media_ref: MediaRef,
     /// When the torrent started seeding (for time-based seeding limits).
     seeding_started_at: Option<std::time::Instant>,
+    /// Whether this torrent was paused by the VPN kill switch (not by user).
+    paused_by_kill_switch: bool,
 }
 
 /// BitTorrent download engine using librqbit.
@@ -238,6 +246,7 @@ impl TorrentEngine {
                         TorrentInfo {
                             media_ref: media_ref.clone(),
                             seeding_started_at: None,
+                            paused_by_kill_switch: false,
                         },
                     );
                 }
@@ -428,6 +437,188 @@ impl TorrentEngine {
         });
 
         completed.into_inner()
+    }
+
+    /// Pause all active torrents.
+    ///
+    /// Marks torrents as paused by kill switch if `by_kill_switch` is true.
+    /// Returns the number of torrents paused.
+    pub async fn pause_all(&self, by_kill_switch: bool) -> usize {
+        use std::cell::RefCell;
+
+        let paused_count = RefCell::new(0usize);
+        let info_hashes = RefCell::new(Vec::new());
+
+        // Collect all non-paused torrent handles
+        self.session.with_torrents(|iter| {
+            for (_, handle) in iter {
+                let stats = handle.stats();
+                if !matches!(stats.state, TorrentStatsState::Paused) {
+                    info_hashes
+                        .borrow_mut()
+                        .push(info_hash_to_string(&handle.info_hash()));
+                }
+            }
+        });
+
+        // Pause each torrent
+        for info_hash in info_hashes.into_inner() {
+            if let Ok(handle) = self.get_torrent_handle(&info_hash) {
+                if self.session.pause(&handle).await.is_ok() {
+                    *paused_count.borrow_mut() += 1;
+
+                    // Mark as paused by kill switch
+                    if by_kill_switch {
+                        let mut torrents = self.torrents.write().await;
+                        if let Some(info) = torrents.get_mut(&info_hash) {
+                            info.paused_by_kill_switch = true;
+                        }
+                    }
+
+                    let _ = self.event_tx.send(TorrentEvent::Paused {
+                        info_hash: info_hash.clone(),
+                    });
+                }
+            }
+        }
+
+        let count = *paused_count.borrow();
+        if count > 0 {
+            tracing::info!(
+                count = count,
+                by_kill_switch = by_kill_switch,
+                "Paused all torrents"
+            );
+        }
+        count
+    }
+
+    /// Resume all paused torrents.
+    ///
+    /// If `only_kill_switch` is true, only resumes torrents that were paused by the kill switch.
+    /// Returns the number of torrents resumed.
+    pub async fn resume_all(&self, only_kill_switch: bool) -> usize {
+        use std::cell::RefCell;
+
+        let resumed_count = RefCell::new(0usize);
+        let info_hashes = RefCell::new(Vec::new());
+
+        // Collect all paused torrent handles
+        self.session.with_torrents(|iter| {
+            for (_, handle) in iter {
+                let stats = handle.stats();
+                if matches!(stats.state, TorrentStatsState::Paused) {
+                    info_hashes
+                        .borrow_mut()
+                        .push(info_hash_to_string(&handle.info_hash()));
+                }
+            }
+        });
+
+        // Resume each torrent (checking kill switch flag if needed)
+        for info_hash in info_hashes.into_inner() {
+            // Check if we should resume this torrent
+            let should_resume = if only_kill_switch {
+                let torrents = self.torrents.read().await;
+                torrents
+                    .get(&info_hash)
+                    .is_some_and(|info| info.paused_by_kill_switch)
+            } else {
+                true
+            };
+
+            if should_resume {
+                if let Ok(handle) = self.get_torrent_handle(&info_hash) {
+                    if self.session.unpause(&handle).await.is_ok() {
+                        *resumed_count.borrow_mut() += 1;
+
+                        // Clear kill switch flag
+                        {
+                            let mut torrents = self.torrents.write().await;
+                            if let Some(info) = torrents.get_mut(&info_hash) {
+                                info.paused_by_kill_switch = false;
+                            }
+                        }
+
+                        let _ = self.event_tx.send(TorrentEvent::Resumed {
+                            info_hash: info_hash.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
+        let count = *resumed_count.borrow();
+        if count > 0 {
+            tracing::info!(
+                count = count,
+                only_kill_switch = only_kill_switch,
+                "Resumed torrents"
+            );
+        }
+        count
+    }
+
+    /// Enable VPN kill switch integration.
+    ///
+    /// Subscribes to WireGuard events and automatically:
+    /// - Pauses all torrents when VPN disconnects
+    /// - Resumes torrents (that were paused by kill switch) when VPN reconnects
+    pub fn enable_vpn_kill_switch(self: &Arc<Self>, wireguard: Arc<WireGuardService>) {
+        let engine = Arc::clone(self);
+        let mut rx = wireguard.subscribe();
+        let event_tx = self.event_tx.clone();
+
+        tokio::spawn(async move {
+            tracing::info!("VPN kill switch enabled for torrent engine");
+
+            loop {
+                match rx.recv().await {
+                    Ok(event) => match event {
+                        WireGuardEvent::Disconnected { interface, reason } => {
+                            tracing::warn!(
+                                interface = %interface,
+                                reason = %reason,
+                                "VPN disconnected, activating kill switch"
+                            );
+                            let paused = engine.pause_all(true).await;
+                            if paused > 0 {
+                                let _ = event_tx.send(TorrentEvent::KillSwitchActivated);
+                            }
+                        }
+                        WireGuardEvent::Error { message } => {
+                            tracing::error!(message = %message, "VPN error, activating kill switch");
+                            let paused = engine.pause_all(true).await;
+                            if paused > 0 {
+                                let _ = event_tx.send(TorrentEvent::KillSwitchActivated);
+                            }
+                        }
+                        WireGuardEvent::Connected {
+                            interface,
+                            endpoint,
+                        } => {
+                            tracing::info!(
+                                interface = %interface,
+                                endpoint = %endpoint,
+                                "VPN connected, deactivating kill switch"
+                            );
+                            let resumed = engine.resume_all(true).await;
+                            if resumed > 0 {
+                                let _ = event_tx.send(TorrentEvent::KillSwitchDeactivated);
+                            }
+                        }
+                        _ => {}
+                    },
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!(missed = n, "VPN event receiver lagged, missed events");
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        tracing::debug!("VPN event channel closed, kill switch disabled");
+                        break;
+                    }
+                }
+            }
+        });
     }
 
     /// Gracefully stop the torrent engine.
@@ -648,5 +839,16 @@ mod tests {
 
         let cloned = media_ref.clone();
         assert_eq!(cloned.media_id, 42);
+    }
+
+    #[test]
+    fn test_kill_switch_event_serialization() {
+        let event = TorrentEvent::KillSwitchActivated;
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"type\":\"kill_switch_activated\""));
+
+        let event = TorrentEvent::KillSwitchDeactivated;
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"type\":\"kill_switch_deactivated\""));
     }
 }

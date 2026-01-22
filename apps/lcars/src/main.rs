@@ -251,6 +251,14 @@ async fn main() {
         }
     };
 
+    // Enable VPN kill switch if both services are available and kill switch is configured
+    if let (Some(ref torrent), Some(ref wg)) = (&torrent_engine, &wireguard_service) {
+        if config.wireguard.as_ref().is_some_and(|c| c.kill_switch) {
+            torrent.enable_vpn_kill_switch(Arc::clone(wg));
+            tracing::info!("VPN kill switch enabled for torrent engine");
+        }
+    }
+
     // Create Soulseek engine (optional - requires credentials)
     let soulseek_engine =
         if config.soulseek.username.is_some() && config.soulseek.password.is_some() {
