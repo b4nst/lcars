@@ -62,6 +62,12 @@ pub enum WsMessage {
     /// Download was removed.
     DownloadRemoved { info_hash: String },
 
+    /// VPN kill switch activated, all downloads paused.
+    KillSwitchActivated,
+
+    /// VPN kill switch deactivated, downloads resumed.
+    KillSwitchDeactivated,
+
     /// System status update (reserved for future use).
     #[allow(dead_code)]
     SystemStatus { active_downloads: usize },
@@ -226,5 +232,9 @@ fn convert_torrent_event(event: TorrentEvent) -> WsMessage {
             status: "downloading".to_string(),
             error_message: None,
         },
+
+        TorrentEvent::KillSwitchActivated => WsMessage::KillSwitchActivated,
+
+        TorrentEvent::KillSwitchDeactivated => WsMessage::KillSwitchDeactivated,
     }
 }
