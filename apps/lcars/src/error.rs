@@ -64,6 +64,18 @@ pub enum AppError {
     /// Conflict (e.g., duplicate resource)
     #[error("Conflict: {0}")]
     Conflict(String),
+
+    /// VPN-related errors
+    #[error("VPN error: {0}")]
+    Vpn(String),
+
+    /// VPN not configured or enabled
+    #[error("VPN not configured")]
+    VpnNotConfigured,
+
+    /// Operation blocked by VPN kill switch
+    #[error("VPN kill switch active")]
+    VpnKillSwitch,
 }
 
 /// JSON error response body
@@ -147,6 +159,34 @@ impl IntoResponse for AppError {
                 )
             }
             AppError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", Some(msg.clone())),
+            AppError::Vpn(msg) => {
+                // Log full error details but don't expose to client
+                tracing::error!("VPN error: {}", msg);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "vpn_error",
+                    None, // Don't expose internal VPN errors to clients
+                )
+            }
+            AppError::VpnNotConfigured => {
+                tracing::warn!("VPN not configured");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "vpn_not_configured",
+                    Some("VPN is not configured or enabled".to_string()),
+                )
+            }
+            AppError::VpnKillSwitch => {
+                tracing::warn!("VPN kill switch active");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "vpn_kill_switch",
+                    Some(
+                        "Operation blocked: VPN is disconnected and kill switch is active"
+                            .to_string(),
+                    ),
+                )
+            }
         };
 
         let body = ErrorResponse {

@@ -61,6 +61,7 @@ impl TestApp {
             storage: Default::default(),
             scheduler: Default::default(),
             music: Default::default(),
+            wireguard: None,
         };
 
         // Create auth service with test secret
@@ -84,6 +85,7 @@ impl TestApp {
             scheduler: None,
             start_time: std::time::Instant::now(),
             storage_manager: None,
+            wireguard_service: None,
         };
 
         // Build router identical to main.rs

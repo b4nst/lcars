@@ -29,6 +29,8 @@ pub struct Config {
     pub scheduler: SchedulerConfig,
     #[serde(default)]
     pub music: MusicConfig,
+    #[serde(default)]
+    pub wireguard: Option<WireGuardConfig>,
 }
 
 /// Server configuration
@@ -332,6 +334,118 @@ fn default_reconnect_delay_max() -> u64 {
 
 fn default_keepalive_interval() -> u64 {
     60
+}
+
+/// WireGuard VPN configuration
+#[derive(Debug, Clone, Deserialize)]
+pub struct WireGuardConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub interface_name: Option<String>,
+    #[serde(default)]
+    pub config_file: Option<PathBuf>,
+    #[serde(default)]
+    pub inline: Option<WireGuardInlineConfig>,
+    #[serde(default = "default_health_check_interval_secs")]
+    pub health_check_interval_secs: u64,
+    #[serde(default = "default_wg_auto_reconnect")]
+    pub auto_reconnect: bool,
+    #[serde(default = "default_reconnect_delay_max_secs")]
+    pub reconnect_delay_max_secs: u64,
+    #[serde(default = "default_kill_switch")]
+    pub kill_switch: bool,
+}
+
+impl Default for WireGuardConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interface_name: None,
+            config_file: None,
+            inline: None,
+            health_check_interval_secs: default_health_check_interval_secs(),
+            auto_reconnect: default_wg_auto_reconnect(),
+            reconnect_delay_max_secs: default_reconnect_delay_max_secs(),
+            kill_switch: default_kill_switch(),
+        }
+    }
+}
+
+fn default_health_check_interval_secs() -> u64 {
+    30
+}
+
+fn default_wg_auto_reconnect() -> bool {
+    true
+}
+
+fn default_reconnect_delay_max_secs() -> u64 {
+    300
+}
+
+fn default_kill_switch() -> bool {
+    true
+}
+
+/// WireGuard inline configuration (alternative to config_file)
+#[derive(Clone, Deserialize)]
+pub struct WireGuardInlineConfig {
+    pub private_key: String,
+    pub addresses: Vec<String>,
+    #[serde(default)]
+    pub listen_port: Option<u16>,
+    #[serde(default)]
+    pub dns: Option<Vec<String>>,
+    #[serde(default)]
+    pub mtu: Option<u16>,
+    pub peer: WireGuardPeerConfig,
+}
+
+// Custom Debug implementation to avoid exposing private_key
+impl std::fmt::Debug for WireGuardInlineConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WireGuardInlineConfig")
+            .field("private_key", &"[REDACTED]")
+            .field("addresses", &self.addresses)
+            .field("listen_port", &self.listen_port)
+            .field("dns", &self.dns)
+            .field("mtu", &self.mtu)
+            .field("peer", &self.peer)
+            .finish()
+    }
+}
+
+/// WireGuard peer configuration
+#[derive(Clone, Deserialize)]
+pub struct WireGuardPeerConfig {
+    pub public_key: String,
+    #[serde(default)]
+    pub preshared_key: Option<String>,
+    pub endpoint: String,
+    pub allowed_ips: Vec<String>,
+    #[serde(default = "default_persistent_keepalive")]
+    pub persistent_keepalive: u16,
+}
+
+// Custom Debug implementation to avoid exposing preshared_key
+impl std::fmt::Debug for WireGuardPeerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WireGuardPeerConfig")
+            .field("public_key", &self.public_key)
+            .field(
+                "preshared_key",
+                &self.preshared_key.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("endpoint", &self.endpoint)
+            .field("allowed_ips", &self.allowed_ips)
+            .field("persistent_keepalive", &self.persistent_keepalive)
+            .finish()
+    }
+}
+
+fn default_persistent_keepalive() -> u16 {
+    25
 }
 
 /// Storage configuration

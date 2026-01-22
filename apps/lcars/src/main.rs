@@ -16,7 +16,7 @@ use lcars::{api, config, db, middleware, services, static_files, views, AppState
 use config::Config;
 use services::{
     AuthService, IndexerManager, JobContext, MusicBrainzClient, Scheduler, SoulseekEngine,
-    StorageManager, TmdbClient, TorrentEngine,
+    StorageManager, TmdbClient, TorrentEngine, WireGuardService,
 };
 
 fn init_tracing() {
@@ -197,6 +197,44 @@ async fn main() {
         indexer_manager.providers().len()
     );
 
+    // Create WireGuard service (optional - requires configuration)
+    let wireguard_service = match &config.wireguard {
+        Some(wg_config) if wg_config.enabled => {
+            match WireGuardService::new_shared(wg_config.clone()) {
+                Ok(service) => {
+                    tracing::info!(
+                        interface = %service.interface_name(),
+                        "WireGuard service initialized"
+                    );
+                    // Auto-connect on startup
+                    match service.connect().await {
+                        Ok(()) => {
+                            tracing::info!("WireGuard connected successfully");
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to connect WireGuard: {}", e);
+                            if wg_config.kill_switch {
+                                tracing::warn!(
+                                    "Kill switch is enabled - torrent downloads will be blocked until VPN connects"
+                                );
+                            }
+                        }
+                    }
+                    Some(service)
+                }
+                Err(e) => {
+                    tracing::error!("Failed to create WireGuard service: {}", e);
+                    tracing::warn!("VPN features will be unavailable");
+                    None
+                }
+            }
+        }
+        _ => {
+            tracing::info!("WireGuard not configured - VPN features disabled");
+            None
+        }
+    };
+
     // Create torrent engine
     let torrent_engine = match TorrentEngine::new_shared(config.torrent.clone()).await {
         Ok(engine) => {
@@ -301,6 +339,7 @@ async fn main() {
         scheduler,
         start_time: std::time::Instant::now(),
         storage_manager,
+        wireguard_service,
     };
 
     // Build auth routes (public)

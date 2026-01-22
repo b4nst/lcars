@@ -148,6 +148,71 @@ media_types = ["movie", "tv"]
 
 Actions: `move`, `copy`
 
+## WireGuard VPN Configuration
+
+Integrate WireGuard VPN to protect torrent traffic from IP leaks. Routes all torrent traffic (TCP, UDP, DNS) through an encrypted tunnel.
+
+**Requirements:**
+- Linux: `CAP_NET_ADMIN` capability or root
+- macOS: Run as root (development only)
+
+| Option | Type | Default | Env Variable | Description |
+|--------|------|---------|--------------|-------------|
+| `wireguard.enabled` | boolean | `false` | `LCARS_WIREGUARD__ENABLED` | Enable WireGuard integration |
+| `wireguard.interface_name` | string | `wg0`/`utun3` | `LCARS_WIREGUARD__INTERFACE_NAME` | Interface name |
+| `wireguard.config_file` | string | *none* | `LCARS_WIREGUARD__CONFIG_FILE` | Path to wg-quick config file |
+| `wireguard.kill_switch` | boolean | `true` | `LCARS_WIREGUARD__KILL_SWITCH` | Pause torrents if VPN disconnects |
+| `wireguard.auto_reconnect` | boolean | `true` | `LCARS_WIREGUARD__AUTO_RECONNECT` | Auto-reconnect on disconnect |
+| `wireguard.health_check_interval_secs` | integer | `30` | `LCARS_WIREGUARD__HEALTH_CHECK_INTERVAL_SECS` | Health check interval |
+| `wireguard.reconnect_delay_max_secs` | integer | `300` | `LCARS_WIREGUARD__RECONNECT_DELAY_MAX_SECS` | Max reconnect backoff |
+
+### Using a Config File
+
+Use an existing WireGuard config file (wg-quick format):
+
+```toml
+[wireguard]
+enabled = true
+config_file = "/etc/wireguard/mullvad.conf"
+kill_switch = true
+```
+
+### Inline Configuration
+
+Configure WireGuard directly in LCARS config:
+
+```toml
+[wireguard]
+enabled = true
+kill_switch = true
+auto_reconnect = true
+
+[wireguard.inline]
+private_key = "your-private-key-base64"
+addresses = ["10.66.66.2/32"]
+dns = ["10.64.0.1"]
+
+[wireguard.inline.peer]
+public_key = "server-public-key-base64"
+endpoint = "vpn.example.com:51820"
+allowed_ips = ["0.0.0.0/0", "::/0"]
+persistent_keepalive = 25
+```
+
+### Environment Variables for VPN
+
+For sensitive VPN credentials, use environment variables:
+
+```bash
+LCARS_WIREGUARD__ENABLED=true
+LCARS_WIREGUARD__KILL_SWITCH=true
+LCARS_WIREGUARD__INLINE__PRIVATE_KEY=your-private-key
+LCARS_WIREGUARD__INLINE__ADDRESSES=10.66.66.2/32
+LCARS_WIREGUARD__INLINE__PEER__PUBLIC_KEY=server-public-key
+LCARS_WIREGUARD__INLINE__PEER__ENDPOINT=vpn.example.com:51820
+LCARS_WIREGUARD__INLINE__PEER__ALLOWED_IPS=0.0.0.0/0
+```
+
 ## Scheduler Configuration
 
 Configure cron schedules for background jobs.
