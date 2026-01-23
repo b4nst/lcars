@@ -30,6 +30,7 @@ use defguard_wireguard_rs::Userspace;
 
 use crate::config::{WireGuardConfig, WireGuardInlineConfig};
 use crate::error::{AppError, Result};
+use crate::services::dns::DnsManager;
 
 // =========================================================================
 // Platform-specific type aliases
@@ -128,12 +129,14 @@ impl Default for WireGuardState {
 /// - Monitoring connection health
 /// - Automatic reconnection on failure
 /// - Real-time statistics and event broadcasting
+/// - DNS leak prevention (optional)
 pub struct WireGuardService {
     config: WireGuardConfig,
     interface_name: String,
     event_tx: broadcast::Sender<WireGuardEvent>,
     state: Arc<RwLock<WireGuardState>>,
     monitor_handle: RwLock<Option<JoinHandle<()>>>,
+    dns_manager: Option<DnsManager>,
 }
 
 impl WireGuardService {
@@ -168,10 +171,20 @@ impl WireGuardService {
 
         let (event_tx, _) = broadcast::channel(100);
 
+        // Create DNS manager if DNS leak protection is enabled
+        let dns_manager = if config.dns_leak_protection {
+            tracing::debug!("DNS leak protection enabled");
+            Some(DnsManager::new(&interface_name))
+        } else {
+            tracing::debug!("DNS leak protection disabled");
+            None
+        };
+
         tracing::info!(
             interface = %interface_name,
             config_file = ?config.config_file,
             has_inline = %config.inline.is_some(),
+            dns_leak_protection = %config.dns_leak_protection,
             "WireGuard service initialized"
         );
 
@@ -181,6 +194,7 @@ impl WireGuardService {
             event_tx,
             state: Arc::new(RwLock::new(WireGuardState::default())),
             monitor_handle: RwLock::new(None),
+            dns_manager,
         })
     }
 
@@ -270,6 +284,26 @@ impl WireGuardService {
             "Successfully connected to WireGuard VPN"
         );
 
+        // Configure DNS if leak protection is enabled
+        if let Some(ref dns_manager) = self.dns_manager {
+            // Get DNS servers from config (prefer explicit config, then inline/file config)
+            let dns_servers = self
+                .config
+                .dns_servers
+                .clone()
+                .or_else(|| wg_config.dns.clone())
+                .unwrap_or_default();
+
+            if !dns_servers.is_empty() {
+                if let Err(e) = dns_manager.set_vpn_dns(&dns_servers).await {
+                    tracing::error!("Failed to configure VPN DNS: {}", e);
+                    // Don't fail the connection for DNS errors, but log it
+                }
+            } else {
+                tracing::debug!("No DNS servers configured, skipping DNS leak protection");
+            }
+        }
+
         // Start health monitoring
         self.start_monitoring().await;
 
@@ -278,13 +312,21 @@ impl WireGuardService {
 
     /// Disconnect from the WireGuard VPN.
     ///
-    /// Tears down the VPN tunnel and stops health monitoring.
+    /// Tears down the VPN tunnel, restores DNS settings, and stops health monitoring.
     ///
     /// # Errors
     ///
     /// Returns an error if the interface cannot be removed.
     pub async fn disconnect(&self) -> Result<()> {
         tracing::info!(interface = %self.interface_name, "Disconnecting from WireGuard VPN");
+
+        // Restore DNS settings first (before removing interface)
+        if let Some(ref dns_manager) = self.dns_manager {
+            if let Err(e) = dns_manager.restore_dns().await {
+                tracing::error!("Failed to restore DNS settings: {}", e);
+                // Continue with disconnect even if DNS restore fails
+            }
+        }
 
         // Stop monitoring task
         {
@@ -794,6 +836,8 @@ AllowedIPs = 0.0.0.0/0
             auto_reconnect: true,
             reconnect_delay_max_secs: 300,
             kill_switch: false,
+            dns_leak_protection: true,
+            dns_servers: None,
         };
 
         let result = WireGuardService::new(config);

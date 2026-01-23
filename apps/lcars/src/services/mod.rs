@@ -2,6 +2,7 @@
 
 pub mod activity;
 pub mod auth;
+pub mod dns;
 pub mod indexer;
 pub mod musicbrainz;
 pub mod scheduler;
@@ -12,6 +13,7 @@ pub mod torrent;
 pub mod wireguard;
 
 pub use auth::{AuthService, Claims};
+pub use dns::DnsManager;
 pub use indexer::IndexerManager;
 pub use musicbrainz::MusicBrainzClient;
 pub use scheduler::{JobContext, Scheduler};
