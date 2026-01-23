@@ -1,0 +1,72 @@
+<div id="vpn-status-widget" class="vpn-widget"
+     hx-get="/vpn/status"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML">
+    <div class="vpn-header">
+        <div class="vpn-indicator {{ vpn_status.status_class }}"></div>
+        <span class="vpn-title">VPN</span>
+        <span class="vpn-status-text">{{ vpn_status.status }}</span>
+    </div>
+
+    {% if vpn_status.configured %}
+    <div class="vpn-details">
+        {% if let Some(interface) = vpn_status.interface %}
+        <div class="vpn-detail">
+            <span class="text-dim text-sm">Interface</span>
+            <span>{{ interface }}</span>
+        </div>
+        {% endif %}
+
+        {% if let Some(endpoint) = vpn_status.endpoint %}
+        <div class="vpn-detail">
+            <span class="text-dim text-sm">Endpoint</span>
+            <span>{{ endpoint }}</span>
+        </div>
+        {% endif %}
+
+        {% if let Some(duration) = vpn_status.connected_since %}
+        <div class="vpn-detail">
+            <span class="text-dim text-sm">Connected</span>
+            <span>{{ duration }}</span>
+        </div>
+        {% endif %}
+
+        {% if vpn_status.kill_switch_enabled %}
+        <div class="vpn-detail">
+            <span class="text-dim text-sm">Kill Switch</span>
+            <span class="{% if vpn_status.kill_switch_active %}text-red{% else %}text-dim{% endif %}">
+                {% if vpn_status.kill_switch_active %}Active{% else %}Ready{% endif %}
+            </span>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if is_admin %}
+    <div class="vpn-controls">
+        {% if vpn_status.status_class == "connected" %}
+        <button class="lcars-button red sm"
+                hx-post="/vpn/disconnect"
+                hx-target="#vpn-status-widget"
+                hx-swap="outerHTML">
+            Disconnect
+        </button>
+        {% else if vpn_status.status_class != "connecting" %}
+        <button class="lcars-button blue sm"
+                hx-post="/vpn/connect"
+                hx-target="#vpn-status-widget"
+                hx-swap="outerHTML">
+            Connect
+        </button>
+        {% else %}
+        <button class="lcars-button tan sm" disabled>
+            Connecting...
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="vpn-details">
+        <p class="text-dim text-sm">VPN is not configured. Add WireGuard configuration in config.toml.</p>
+    </div>
+    {% endif %}
+</div>

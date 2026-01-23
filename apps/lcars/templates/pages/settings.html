@@ -60,14 +60,50 @@
             </div>
 
             <div class="lcars-panel">
-                <div class="lcars-panel-accent {% if vpn_status.connected %}lcars-blue{% else %}lcars-yellow{% endif %}"></div>
+                <div class="lcars-panel-accent {% if vpn_status.status_class == "connected" %}lcars-blue{% else if vpn_status.status_class == "connecting" %}lcars-yellow{% else if vpn_status.status_class == "error" %}lcars-red{% else %}lcars-tan{% endif %}"></div>
                 <div class="lcars-panel-content">
-                    <div class="lcars-panel-title">VPN</div>
-                    {% if vpn_status.connected %}
-                    <div>Connected{% if let Some(ip) = vpn_status.ip %} ({{ ip }}){% endif %}</div>
-                    {% else %}
-                    <div>Not Connected</div>
-                    {% endif %}
+                    <div class="lcars-panel-title">WireGuard VPN</div>
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="vpn-indicator {{ vpn_status.status_class }}"></span>
+                                <span>{{ vpn_status.status }}</span>
+                            </div>
+                            {% if let Some(endpoint) = vpn_status.endpoint %}
+                            <div class="text-dim text-sm">{{ endpoint }}</div>
+                            {% endif %}
+                            {% if vpn_status.kill_switch_enabled %}
+                            <div class="text-sm {% if vpn_status.kill_switch_active %}text-red{% endif %}">
+                                Kill Switch: {% if vpn_status.kill_switch_active %}Active{% else %}Ready{% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% if vpn_status.configured %}
+                        <div class="vpn-controls">
+                            {% if vpn_status.status_class == "connected" %}
+                            <button class="lcars-button red sm"
+                                    hx-post="/vpn/disconnect"
+                                    hx-target="closest .lcars-panel"
+                                    hx-swap="outerHTML"
+                                    hx-select=".lcars-panel">
+                                Disconnect
+                            </button>
+                            {% else if vpn_status.status_class != "connecting" %}
+                            <button class="lcars-button blue sm"
+                                    hx-post="/vpn/connect"
+                                    hx-target="closest .lcars-panel"
+                                    hx-swap="outerHTML"
+                                    hx-select=".lcars-panel">
+                                Connect
+                            </button>
+                            {% else %}
+                            <button class="lcars-button tan sm" disabled>
+                                Connecting...
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
 

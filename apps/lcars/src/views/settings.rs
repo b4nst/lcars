@@ -3,10 +3,11 @@
 use askama::Template;
 use axum::{
     extract::State,
-    response::{IntoResponse, Redirect},
+    response::{Html, IntoResponse, Redirect},
 };
 use axum_extra::extract::CookieJar;
 
+use crate::services::wireguard::ConnectionStatus;
 use crate::AppState;
 
 use super::auth;
@@ -18,17 +19,33 @@ pub struct SettingsTemplate {
     pub version: String,
     pub uptime: String,
     pub db_size: String,
-    pub vpn_status: VpnStatus,
+    pub vpn_status: VpnStatusView,
     pub torrent_status: ServiceStatus,
     pub soulseek_status: ServiceStatus,
     pub storage_mounts: Vec<StorageMount>,
     pub indexers: Vec<IndexerInfo>,
 }
 
-pub struct VpnStatus {
-    pub connected: bool,
-    pub ip: Option<String>,
-    pub country: Option<String>,
+/// VPN status view model for templates
+pub struct VpnStatusView {
+    /// Whether WireGuard is configured
+    pub configured: bool,
+    /// Whether WireGuard is enabled
+    pub enabled: bool,
+    /// Current connection status string
+    pub status: String,
+    /// CSS class for status indicator (connected, connecting, disconnected, error)
+    pub status_class: String,
+    /// Interface name
+    pub interface: Option<String>,
+    /// Connected peer endpoint
+    pub endpoint: Option<String>,
+    /// Human-readable connection duration
+    pub connected_since: Option<String>,
+    /// Whether kill switch is enabled
+    pub kill_switch_enabled: bool,
+    /// Whether kill switch is currently active
+    pub kill_switch_active: bool,
 }
 
 pub struct ServiceStatus {
@@ -83,8 +100,8 @@ pub async fn page(State(state): State<AppState>, cookies: CookieJar) -> impl Int
     };
     drop(db);
 
-    // Check VPN status
-    let vpn_status = check_vpn_status().await;
+    // Check VPN status from WireGuard service
+    let vpn_status = get_vpn_status(&state).await;
 
     // Torrent engine status
     let torrent_status = if let Some(engine) = state.torrent_engine() {
@@ -178,14 +195,165 @@ fn get_db_size(conn: &rusqlite::Connection) -> String {
     format_size(size as u64)
 }
 
-async fn check_vpn_status() -> VpnStatus {
-    // Try to get external IP and check if it's different from local
-    // This is a simple check; production would use VPN provider API
-    VpnStatus {
-        connected: false,
-        ip: None,
-        country: None,
+/// Get VPN status from WireGuard service
+async fn get_vpn_status(state: &AppState) -> VpnStatusView {
+    let wg_config = state.config.wireguard.as_ref();
+    let configured = wg_config.is_some();
+    let enabled = wg_config.is_some_and(|c| c.enabled);
+    let kill_switch_enabled = wg_config.is_some_and(|c| c.kill_switch);
+
+    if let Some(wg_service) = state.wireguard_service() {
+        let wg_state = wg_service.get_status().await;
+
+        let (status, status_class) = match &wg_state.status {
+            ConnectionStatus::Disconnected => ("Disconnected".to_string(), "disconnected"),
+            ConnectionStatus::Connecting => ("Connecting...".to_string(), "connecting"),
+            ConnectionStatus::Connected => ("Connected".to_string(), "connected"),
+            ConnectionStatus::Reconnecting { attempt } => {
+                (format!("Reconnecting (attempt {})", attempt), "connecting")
+            }
+            ConnectionStatus::Error(msg) => (format!("Error: {}", msg), "error"),
+        };
+
+        let is_disconnected = matches!(
+            wg_state.status,
+            ConnectionStatus::Disconnected | ConnectionStatus::Error(_)
+        );
+        let kill_switch_active = kill_switch_enabled && is_disconnected;
+
+        let connected_since = wg_state.connected_since.map(|dt| {
+            let now = chrono::Utc::now();
+            let duration = now - dt;
+            format_duration(duration.num_seconds().max(0) as u64)
+        });
+
+        VpnStatusView {
+            configured,
+            enabled,
+            status,
+            status_class: status_class.to_string(),
+            interface: Some(wg_service.interface_name().to_string()),
+            endpoint: wg_state.stats.endpoint.clone(),
+            connected_since,
+            kill_switch_enabled,
+            kill_switch_active,
+        }
+    } else {
+        VpnStatusView {
+            configured,
+            enabled,
+            status: if configured {
+                "Not initialized".to_string()
+            } else {
+                "Not configured".to_string()
+            },
+            status_class: "disconnected".to_string(),
+            interface: None,
+            endpoint: None,
+            connected_since: None,
+            kill_switch_enabled,
+            kill_switch_active: false,
+        }
     }
+}
+
+/// VPN status partial template for HTMX updates
+#[derive(Template)]
+#[template(path = "partials/vpn_status.html")]
+pub struct VpnStatusPartial {
+    pub vpn_status: VpnStatusView,
+    pub is_admin: bool,
+}
+
+/// GET /vpn/status - Returns VPN status HTML partial for HTMX polling
+pub async fn vpn_status_partial(
+    State(state): State<AppState>,
+    cookies: CookieJar,
+) -> impl IntoResponse {
+    let user = auth::get_current_user(&state, &cookies).await;
+    if user.is_none() {
+        return Html("<div class='lcars-error'>Unauthorized</div>").into_response();
+    }
+
+    let is_admin = user.is_some_and(|u| u.role == "admin");
+    let vpn_status = get_vpn_status(&state).await;
+
+    VpnStatusPartial {
+        vpn_status,
+        is_admin,
+    }
+    .into_response()
+}
+
+/// POST /vpn/connect - Connect VPN and return status partial
+pub async fn vpn_connect(State(state): State<AppState>, cookies: CookieJar) -> impl IntoResponse {
+    let user = auth::get_current_user(&state, &cookies).await;
+    if user.is_none() {
+        return Html("<div class='lcars-error'>Unauthorized</div>").into_response();
+    }
+
+    // Check admin role
+    if user.is_none_or(|u| u.role != "admin") {
+        return Html("<div class='lcars-error'>Admin access required</div>").into_response();
+    }
+
+    // Connect VPN
+    if let Some(wg_service) = state.wireguard_service() {
+        if let Err(e) = wg_service.connect().await {
+            return Html(format!(
+                "<div class='lcars-error'>Failed to connect: {}</div>",
+                e
+            ))
+            .into_response();
+        }
+    } else {
+        return Html("<div class='lcars-error'>VPN not configured</div>").into_response();
+    }
+
+    // Return updated status
+    let vpn_status = get_vpn_status(&state).await;
+    VpnStatusPartial {
+        vpn_status,
+        is_admin: true,
+    }
+    .into_response()
+}
+
+/// POST /vpn/disconnect - Disconnect VPN and return status partial
+pub async fn vpn_disconnect(
+    State(state): State<AppState>,
+    cookies: CookieJar,
+) -> impl IntoResponse {
+    let user = auth::get_current_user(&state, &cookies).await;
+    if user.is_none() {
+        return Html("<div class='lcars-error'>Unauthorized</div>").into_response();
+    }
+
+    // Check admin role
+    if user.is_none_or(|u| u.role != "admin") {
+        return Html("<div class='lcars-error'>Admin access required</div>").into_response();
+    }
+
+    // Disconnect VPN
+    if let Some(wg_service) = state.wireguard_service() {
+        if let Err(e) = wg_service.disconnect().await {
+            return Html(format!(
+                "<div class='lcars-error'>Failed to disconnect: {}</div>",
+                e
+            ))
+            .into_response();
+        }
+    } else {
+        return Html("<div class='lcars-error'>VPN not configured</div>").into_response();
+    }
+
+    // Return updated status
+    let vpn_status = get_vpn_status(&state).await;
+    VpnStatusPartial {
+        vpn_status,
+        is_admin: true,
+    }
+    .into_response()
 }
 
 fn format_duration(seconds: u64) -> String {
