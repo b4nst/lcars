@@ -16,6 +16,7 @@ use crate::api::downloads::{
     resume_download as api_resume, DeleteDownloadQuery, ListDownloadsQuery,
 };
 use crate::db::models::DownloadStatus;
+use crate::services::wireguard::ConnectionStatus;
 use crate::AppState;
 
 use super::{
@@ -36,6 +37,13 @@ pub struct DownloadsTemplate {
     pub paused: Vec<DownloadView>,
     pub completed: Vec<DownloadView>,
     pub failed: Vec<DownloadView>,
+    pub vpn_warning: Option<VpnWarning>,
+}
+
+/// VPN warning to show on downloads page
+pub struct VpnWarning {
+    pub message: String,
+    pub show_connect_button: bool,
 }
 
 #[derive(Template)]
@@ -74,6 +82,9 @@ pub async fn page(State(state): State<AppState>, cookies: CookieJar) -> impl Int
     if auth::get_current_user(&state, &cookies).await.is_none() {
         return Redirect::to("/login").into_response();
     }
+
+    // Check VPN status for warning banner
+    let vpn_warning = get_vpn_warning(&state).await;
 
     // Call API handler
     let response = api_list(
@@ -131,10 +142,47 @@ pub async fn page(State(state): State<AppState>, cookies: CookieJar) -> impl Int
                 paused,
                 completed,
                 failed,
+                vpn_warning,
             }
             .into_response()
         }
         Err(_) => Html("<div class='lcars-error'>Failed to load downloads</div>").into_response(),
+    }
+}
+
+/// Check if VPN warning should be shown
+async fn get_vpn_warning(state: &AppState) -> Option<VpnWarning> {
+    let wg_config = state.config.wireguard.as_ref()?;
+
+    let kill_switch_enabled = wg_config.kill_switch;
+
+    if let Some(wg_service) = state.wireguard_service() {
+        let wg_state = wg_service.get_status().await;
+
+        let is_disconnected = matches!(
+            wg_state.status,
+            ConnectionStatus::Disconnected | ConnectionStatus::Error(_)
+        );
+
+        if is_disconnected && kill_switch_enabled {
+            // Kill switch active - show critical warning
+            Some(VpnWarning {
+                message: "VPN is disconnected. Kill switch is active - all downloads are paused."
+                    .to_string(),
+                show_connect_button: true,
+            })
+        } else if is_disconnected {
+            // VPN disconnected but no kill switch - show warning
+            Some(VpnWarning {
+                message: "VPN is disconnected. Your IP may be exposed during downloads."
+                    .to_string(),
+                show_connect_button: true,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
     }
 }
 

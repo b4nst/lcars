@@ -26,6 +26,17 @@
                 {% include "partials/status_cards.html" %}
             </div>
 
+            <!-- VPN Status Widget -->
+            {% if vpn_status.configured %}
+            <section class="mb-4">
+                <div class="section-header">
+                    <h2>VPN Status</h2>
+                    <a href="/settings" class="lcars-button yellow sm">Settings</a>
+                </div>
+                {% include "partials/vpn_status.html" %}
+            </section>
+            {% endif %}
+
             <!-- Active Downloads -->
             <section class="mb-4">
                 <div class="section-header">

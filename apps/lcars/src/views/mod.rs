@@ -81,6 +81,13 @@ pub fn routes() -> Router<AppState> {
         )
         .route("/downloads/:id", axum::routing::delete(downloads::cancel))
         .route("/settings", get(settings::page))
+        // VPN routes
+        .route("/vpn/status", get(settings::vpn_status_partial))
+        .route("/vpn/connect", axum::routing::post(settings::vpn_connect))
+        .route(
+            "/vpn/disconnect",
+            axum::routing::post(settings::vpn_disconnect),
+        )
         // Search modals
         .route("/search/tv/modal", get(tv::search_modal))
         .route("/search/music/modal", get(music::search_modal))
