@@ -355,6 +355,15 @@ pub struct WireGuardConfig {
     pub reconnect_delay_max_secs: u64,
     #[serde(default = "default_kill_switch")]
     pub kill_switch: bool,
+    /// Enable DNS leak prevention by managing system DNS settings.
+    /// When enabled, DNS servers from the WireGuard config will be set as system DNS
+    /// on connect and restored on disconnect.
+    #[serde(default = "default_dns_leak_protection")]
+    pub dns_leak_protection: bool,
+    /// Custom DNS servers to use when VPN is connected.
+    /// If not specified, uses DNS from the WireGuard config file or inline config.
+    #[serde(default)]
+    pub dns_servers: Option<Vec<String>>,
 }
 
 impl Default for WireGuardConfig {
@@ -368,6 +377,8 @@ impl Default for WireGuardConfig {
             auto_reconnect: default_wg_auto_reconnect(),
             reconnect_delay_max_secs: default_reconnect_delay_max_secs(),
             kill_switch: default_kill_switch(),
+            dns_leak_protection: default_dns_leak_protection(),
+            dns_servers: None,
         }
     }
 }
@@ -385,6 +396,10 @@ fn default_reconnect_delay_max_secs() -> u64 {
 }
 
 fn default_kill_switch() -> bool {
+    true
+}
+
+fn default_dns_leak_protection() -> bool {
     true
 }
 

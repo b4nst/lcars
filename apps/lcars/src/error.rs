@@ -76,6 +76,10 @@ pub enum AppError {
     /// Operation blocked by VPN kill switch
     #[error("VPN kill switch active")]
     VpnKillSwitch,
+
+    /// DNS management errors
+    #[error("DNS error: {0}")]
+    Dns(String),
 }
 
 /// JSON error response body
@@ -185,6 +189,15 @@ impl IntoResponse for AppError {
                         "Operation blocked: VPN is disconnected and kill switch is active"
                             .to_string(),
                     ),
+                )
+            }
+            AppError::Dns(msg) => {
+                // Log full error details but don't expose to client
+                tracing::error!("DNS error: {}", msg);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "dns_error",
+                    None, // Don't expose internal DNS errors to clients
                 )
             }
         };
